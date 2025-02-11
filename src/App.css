@@ -172,3 +172,42 @@
 .connection-status.disconnected {
   color: #dc3545;
 }
+
+/* CSS for styling the buttons */
+.button-container {
+  display: flex; /* Enables flexbox for layout */
+  flex-direction: column; /* Arranges items vertically */
+  align-items: left; /* Centers items horizontally */
+  gap: 10px; /* Adds space between items */ /* Adjust as needed */
+}
+
+.top-button {
+  font-size: 1.2rem; /* Makes the top button larger */
+  padding: 10px 20px; /* Adjust padding for size */
+  width: 21%;
+}
+
+.bottom-buttons {
+  display: flex; /* Enables flexbox for bottom buttons */
+  gap: 5px; /* Adds space between bottom buttons */ /* Adjust as needed */
+}
+
+.bottom-buttons button {
+  font-size: 1rem; /* Makes the bottom buttons smaller */
+  padding: 8px 16px; /* Adjust padding for size */
+  /* Add any other desired styles for the bottom buttons */
+}
+
+/* Optional: Style all buttons for consistency */
+.button-container button {
+    background-color: #007bff; /* Example color */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s; /* Smooth transition on hover */
+}
+
+.button-container button:hover {
+    background-color: #0056b3; /* Darker color on hover */
+}
