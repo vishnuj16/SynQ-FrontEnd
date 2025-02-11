@@ -13,6 +13,53 @@ function ChatInterface() {
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
 
+  const handleWebSocketMessage = useCallback((data) => {
+    console.log('Received WebSocket data:', data);
+    
+    try {
+      // Handle initial messages fetch response
+      if (data.type === 'channel_messages' || data.type === 'direct_messages') {
+        console.log('Setting initial messages:', data.messages);
+        setMessages(data.messages);
+        return;
+      }
+
+      // // Handle real-time messages
+      // console.log('Direct message received:', data);
+      // console.log('Selected chat:', selectedChat);
+      // console.log('Current messages:', messages);
+      if (data.message_type === 'channels') {
+        if (selectedChat?.type === 'channel' && data.channel_id === selectedChat.id) {
+          setMessages(prevMessages => [...prevMessages, data]);
+        }
+      } else if (data.message_type === 'direct') {
+        if (selectedChat?.type === 'direct') {
+          // Convert username to match selectedChat.id if needed
+          const isSenderOrRecipient = 
+            selectedChat.id === parseInt(data.recipient_id) || 
+            selectedChat.username === data.sender;
+
+          if (isSenderOrRecipient) {
+            console.log('Adding new direct message');
+            setMessages(prevMessages => [...(prevMessages || []), {
+              id: data.id,
+              content: data.content,
+              sender: data.sender,
+              timestamp: data.timestamp,
+              message_type: 'direct'
+            }]);
+          }
+        }
+      }
+
+      // console.log('After Direct message received:', data);
+      // console.log('After Selected chat:', selectedChat);
+      // console.log('After Current messages:', messages);
+    } catch (error) {
+      console.error('Error handling WebSocket message:', error);
+    }
+  }, [selectedChat]);
+
   const fetchChannels = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/chat/channels/team_id/`, {
@@ -56,38 +103,6 @@ function ChatInterface() {
     }
   }, [selectedChat]);
 
-  const handleWebSocketMessage = useCallback((data) => {
-    console.log('Received WebSocket data:', data);
-    try {
-      if (!data.message_type) {
-        // Handle initial messages fetch response
-        if (data.type === 'channel_messages' || data.type === 'direct_messages') {
-          setMessages(data.messages);
-          return;
-        }
-      }
-
-      // Handle real-time messages
-      switch (data.message_type) {
-        case 'channels':
-          if (selectedChat?.type === 'channel' && data.channel_id === selectedChat.id) {
-            setMessages(prevMessages => [...prevMessages, data]);
-          }
-          break;
-        case 'direct':
-          if (selectedChat?.type === 'direct' && 
-             (data.sender === selectedChat.id || data.recipient_id === selectedChat.id)) {
-                setMessages(prevMessages => [...prevMessages, data]);
-          }
-          break;
-        default:
-          console.log('Unhandled message type:', data.message_type);
-      }
-    } catch (error) {
-      console.error('Error handling WebSocket message:', error);
-    }
-  }, [selectedChat]);
-
   const connectWebSocket = useCallback(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -110,7 +125,6 @@ function ChatInterface() {
       wsRef.current.onopen = () => {
         console.log("WebSocket connected");
         setWsConnected(true);
-        // Request messages for current chat if any
         if (selectedChat) {
           const request = selectedChat.type === 'channel' 
             ? { message_type: 'get_channel_messages', channel_id: selectedChat.id }
@@ -149,6 +163,11 @@ function ChatInterface() {
     }
   }, [handleWebSocketMessage, selectedChat]);
 
+  const handleChatSelect = (chat) => {
+    setSelectedChat(chat);
+    setMessages([]); // Clear messages before loading new ones
+  };
+
   const fetchInteractedUsers = async () => {
     try {
       const response = await fetch('http://localhost:8000/api/chat/users/interacted/', {
@@ -183,11 +202,6 @@ function ChatInterface() {
     fetchMessages();
   }, [selectedChat, fetchMessages]);
 
-  const handleChatSelect = (chat) => {
-    setSelectedChat(chat);
-    setMessages([]); // Clear messages before loading new ones
-  };
-
   const sendMessage = (content) => {
     if (!selectedChat || !content.trim() || !wsConnected) {
       console.log('Cannot send message:', {
@@ -202,6 +216,7 @@ function ChatInterface() {
       const message = {
         message_type: selectedChat.type === 'channel' ? 'channel_message' : 'direct_message',
         content,
+        team_id: teamId,
         ...(selectedChat.type === 'channel' 
           ? { channel: selectedChat.id }
           : { recipient: selectedChat.id }
