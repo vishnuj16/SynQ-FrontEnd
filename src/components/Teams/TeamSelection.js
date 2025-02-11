@@ -133,6 +133,7 @@ const TeamManagement = () => {
   return (
     <div className="container">
       <h1>Team Management</h1>
+      <h1>Team Management</h1>
       <button onClick={() => setShowCreateDialog(true)}>Create Team</button>
       <button onClick={() => setShowJoinDialog(true)}>Join Team</button>
 
@@ -142,7 +143,7 @@ const TeamManagement = () => {
       {showCreateDialog && (
         <div className="modal">
           <div className="modal-content">
-            <h2>Create New Team</h2>
+            <h2 >Create New Team</h2>
             <input type="text" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} placeholder="Team Name" />
             <button onClick={createTeam}>Create Team</button>
             <button onClick={() => setShowCreateDialog(false)}>Close</button>
@@ -163,7 +164,7 @@ const TeamManagement = () => {
 
         {teams.map(team => (
           <div key={team.id}>
-            <h2>{team.name}</h2>
+            <h2 style={{textAlign: "center"}} >{team.name}</h2>
             <div className="button-container">
               <button 
                 className="top-button"

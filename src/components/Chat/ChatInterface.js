@@ -168,20 +168,31 @@ function ChatInterface() {
     setMessages([]); // Clear messages before loading new ones
   };
 
-  const fetchInteractedUsers = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/chat/users/interacted/', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setInteractedUsers(data);
-    } catch (error) {
-      console.error('Error fetching interacted users:', error);
+  const fetchInteractedUsers = useCallback(async () => {
+    console.log("Team ID : ", teamId)
+    if (!teamId) {
+        console.error('Team ID is required to fetch interacted users.');
+        return;
     }
-  };
+
+    try {
+        const response = await fetch(`http://localhost:8000/api/chat/users/interacted/?team_id=${teamId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        console.log(response)
+
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
+        const data = await response.json();
+        setInteractedUsers(data);
+    } catch (error) {
+        console.error('Error fetching interacted users:', error);
+    }
+}, [teamId]);
+
 
   useEffect(() => {
     connectWebSocket();
@@ -230,12 +241,18 @@ function ChatInterface() {
   };
 
   return (
-    <div className="chat-interface">
+    <div>
+      <br></br>
+      <br></br>
+      <br></br>
+      <br></br>
+      <div className="chat-interface">
       <Sidebar
         channels={channels}
         interactedUsers={interactedUsers}
         selectedChat={selectedChat}
         onSelectChat={handleChatSelect}
+        teamId={teamId}
       />
       <MessageWindow
         key={selectedChat?.id}
@@ -245,6 +262,8 @@ function ChatInterface() {
         isConnected={wsConnected}
       />
     </div>
+    </div>
+    
   );
 }
 

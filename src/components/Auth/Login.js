@@ -27,23 +27,27 @@ function Login({ setIsAuthenticated }) {
 
   return (
     <div className="auth-container">
-      <form onSubmit={handleSubmit} className="auth-form">
+      <div className="login-box">
         <h2>Login</h2>
-        <input
-          type="text"
-          placeholder="Username"
-          value={credentials.username}
-          onChange={(e) => setCredentials({...credentials, username: e.target.value})}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={credentials.password}
-          onChange={(e) => setCredentials({...credentials, password: e.target.value})}
-        />
-        <button type="submit">Login</button>
-        <Link to="/register">Don't have an account? Register</Link>
-      </form>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <input
+            type="text"
+            placeholder="Username"
+            value={credentials.username}
+            onChange={(e) => setCredentials({...credentials, username: e.target.value})}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={credentials.password}
+            onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+          />
+          <button type="submit">Login</button>
+        </form>
+        <p className="register-link">
+          Don't have an account? <Link to="/register">Register</Link>
+        </p>
+      </div>
     </div>
   );
 }

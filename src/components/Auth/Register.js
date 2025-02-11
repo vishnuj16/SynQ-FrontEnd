@@ -1,4 +1,3 @@
-// src/components/Auth/Register.js
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
@@ -47,40 +46,45 @@ function Register({ setIsAuthenticated }) {
 
   return (
     <div className="auth-container">
-      <form onSubmit={handleSubmit} className="auth-form">
+      <div className="register-box">
         <h2>Register</h2>
         {error && <div className="error-message">{error}</div>}
         
-        <input
-          type="text"
-          name="username"
-          placeholder="Username"
-          value={formData.username}
-          onChange={handleChange}
-          required
-        />
-        
-        <input
-          type="email"
-          name="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-        />
-        
-        <input
-          type="password"
-          name="password"
-          placeholder="Password"
-          value={formData.password}
-          onChange={handleChange}
-          required
-        />
-        
-        <button type="submit">Register</button>
-        <Link to="/login">Already have an account? Login</Link>
-      </form>
+        <form onSubmit={handleSubmit} className="auth-form">
+          <input
+            type="text"
+            name="username"
+            placeholder="Username"
+            value={formData.username}
+            onChange={handleChange}
+            required
+          />
+          
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+          />
+          
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+          />
+          
+          <button type="submit">Register</button>
+        </form>
+
+        <p className="login-link">
+          Already have an account? <Link to="/login">Login</Link>
+        </p>
+      </div>
     </div>
   );
 }

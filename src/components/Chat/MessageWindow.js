@@ -12,9 +12,13 @@ function MessageWindow({ messages, selectedChat, onSendMessage, isConnected }) {
     }
   }, [shouldAutoScroll]);
 
+  // useEffect(() => {
+  //   scrollToBottom();
+  // }, [messages, scrollToBottom]);
+
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]); 
 
   // Handle scroll events to determine if auto-scroll should continue
   const handleScroll = () => {
