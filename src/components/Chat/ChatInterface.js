@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import MessageWindow from './MessageWindow';
+import { Box } from '@mui/material';
 
-function ChatInterface() {
+function ChatInterface({ setIsAuthenticated }) {
   const { teamId } = useParams();
   const [channels, setChannels] = useState([]);
   const [interactedUsers, setInteractedUsers] = useState([]);
@@ -24,37 +25,29 @@ function ChatInterface() {
         return;
       }
 
-      // // Handle real-time messages
-      // console.log('Direct message received:', data);
-      // console.log('Selected chat:', selectedChat);
-      // console.log('Current messages:', messages);
+      if (data.type === 'reaction_update') {
+        console.log('Updating message reactions:', data);
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === data.message_id 
+              ? { ...msg, reactions: data.reactions }
+              : msg
+          )
+        );
+        return;
+      }
+
       if (data.message_type === 'channels') {
         if (selectedChat?.type === 'channel' && data.channel_id === selectedChat.id) {
           setMessages(prevMessages => [...prevMessages, data]);
         }
       } else if (data.message_type === 'direct') {
         if (selectedChat?.type === 'direct') {
-          // Convert username to match selectedChat.id if needed
-          const isSenderOrRecipient = 
-            selectedChat.id === parseInt(data.recipient_id) || 
-            selectedChat.username === data.sender;
-
-          if (isSenderOrRecipient) {
             console.log('Adding new direct message');
-            setMessages(prevMessages => [...(prevMessages || []), {
-              id: data.id,
-              content: data.content,
-              sender: data.sender,
-              timestamp: data.timestamp,
-              message_type: 'direct'
-            }]);
-          }
+            setMessages(prevMessages => [...prevMessages, data]);
         }
       }
 
-      // console.log('After Direct message received:', data);
-      // console.log('After Selected chat:', selectedChat);
-      // console.log('After Current messages:', messages);
     } catch (error) {
       console.error('Error handling WebSocket message:', error);
     }
@@ -77,6 +70,34 @@ function ChatInterface() {
       console.error('Error fetching channels:', error);
     }
   }, [teamId]);
+
+  const onReactMessage = async (messageId, reaction, type) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/chat/messages/${messageId}/react/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reaction })
+      });
+  
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      
+      // Send WebSocket message to notify about reaction
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          message_type: 'reaction',
+          message_id: messageId,
+          reaction: reaction,
+          type
+        }));
+      }
+      console.log('Reaction added : ', reaction ,response)
+    } catch (error) {
+      console.error('Error reacting to message:', error);
+    }
+  };
 
   const fetchMessages = useCallback(async () => {
     if (!selectedChat) return;
@@ -164,6 +185,7 @@ function ChatInterface() {
   }, [handleWebSocketMessage, selectedChat]);
 
   const handleChatSelect = (chat) => {
+    console.log("checking chat selected : ", chat)
     setSelectedChat(chat);
     setMessages([]); // Clear messages before loading new ones
   };
@@ -213,7 +235,18 @@ function ChatInterface() {
     fetchMessages();
   }, [selectedChat, fetchMessages]);
 
-  const sendMessage = (content) => {
+  // useEffect(() => {
+  //   if (wsConnected && selectedChat) {
+  //     const request = selectedChat.type === 'channel' 
+  //       ? { message_type: 'get_channel_messages', channel_id: selectedChat.id }
+  //       : { message_type: 'get_direct_messages', user_id: selectedChat.id };
+  
+  //     wsRef.current.send(JSON.stringify(request));
+  //   }
+  // }, [selectedChat, wsConnected]);
+  
+
+  const sendMessage = (content, reply_to) => {
     if (!selectedChat || !content.trim() || !wsConnected) {
       console.log('Cannot send message:', {
         selectedChat: !!selectedChat,
@@ -231,8 +264,10 @@ function ChatInterface() {
         ...(selectedChat.type === 'channel' 
           ? { channel: selectedChat.id }
           : { recipient: selectedChat.id }
-        )
+        ),
+        reply_to: reply_to || null
       };
+      console.log('Sending message:', message);
 
       wsRef.current.send(JSON.stringify(message));
     } catch (error) {
@@ -242,26 +277,31 @@ function ChatInterface() {
 
   return (
     <div>
-      <br></br>
-      <br></br>
-      <br></br>
-      <br></br>
-      <div className="chat-interface">
-      <Sidebar
-        channels={channels}
-        interactedUsers={interactedUsers}
-        selectedChat={selectedChat}
-        onSelectChat={handleChatSelect}
-        teamId={teamId}
-      />
-      <MessageWindow
-        key={selectedChat?.id}
-        messages={messages}
-        selectedChat={selectedChat}
-        onSendMessage={sendMessage}
-        isConnected={wsConnected}
-      />
-    </div>
+      <Box
+        sx={{
+          display: 'flex',
+          height: 'calc(100vh - 64px)', // Subtract app bar height
+          bgcolor: 'background.default',
+          overflow: 'hidden'
+        }}
+      >
+        <Sidebar
+          channels={channels}
+          interactedUsers={interactedUsers}
+          selectedChat={selectedChat}
+          onSelectChat={handleChatSelect}
+          teamId={teamId}
+          setIsAuthenticated={setIsAuthenticated}
+        />
+        <MessageWindow
+          key={selectedChat?.id}
+          messages={messages}
+          selectedChat={selectedChat}
+          onSendMessage={sendMessage}
+          isConnected={wsConnected}
+          onReactMessage={onReactMessage}
+        />
+      </Box>
     </div>
     
   );

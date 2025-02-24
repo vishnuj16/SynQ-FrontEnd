@@ -1,10 +1,38 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  IconButton,
+  Chip,
+  Avatar,
+  InputAdornment,
+  Tooltip,
+  Modal,
+  Menu,
+  MenuItem,
+  Stack 
+} from '@mui/material';
+import {
+  Send as SendIcon,
+  Reply as ReplyIcon,
+  EmojiEmotions as EmojiIcon,
+  MoreVert as MoreVertIcon // Import MoreVertIcon for the three dots
+} from '@mui/icons-material';
+import EmojiPicker from 'emoji-picker-react'; // Joypixels integration
+// import joypixels from 'joypixels';
 
-function MessageWindow({ messages, selectedChat, onSendMessage, isConnected }) {
+function MessageWindow({ messages, selectedChat, onSendMessage, isConnected, onReactMessage }) {
   const [newMessage, setNewMessage] = useState('');
+  const [replyTo, setReplyTo] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [anchorEl, setAnchorEl] = useState(null); // Anchor for the menu
+  const [selectedMessageForMenu, setSelectedMessageForMenu] = useState(null); // Track which message's menu is open
 
   const scrollToBottom = useCallback(() => {
     if (shouldAutoScroll) {
@@ -12,15 +40,10 @@ function MessageWindow({ messages, selectedChat, onSendMessage, isConnected }) {
     }
   }, [shouldAutoScroll]);
 
-  // useEffect(() => {
-  //   scrollToBottom();
-  // }, [messages, scrollToBottom]);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]); 
+  }, [messages]);
 
-  // Handle scroll events to determine if auto-scroll should continue
   const handleScroll = () => {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
@@ -29,95 +52,336 @@ function MessageWindow({ messages, selectedChat, onSendMessage, isConnected }) {
     }
   };
 
+  const MessageReactions = ({ reactions }) => {
+    if (!reactions || Object.keys(reactions).length === 0) return null;
+  
+    // Group reactions by emoji
+    const groupedReactions = Object.entries(reactions).reduce((acc, [username, emoji]) => {
+      acc[emoji] = acc[emoji] || { emoji, users: [], count: 0 };
+      acc[emoji].users.push(username);
+      acc[emoji].count += 1;
+      return acc;
+    }, {});
+  
+    return (
+      <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+        {Object.values(groupedReactions).map(({ emoji, users, count }) => (
+          <Tooltip
+            key={emoji}
+            title={users.join(', ')}
+            placement="bottom"
+          >
+            <Chip
+              label={`${emoji} ${count}`}
+              size="small"
+              sx={{
+                height: 20,
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(0, 0, 0, 0.08)',
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.12)',
+                }
+              }}
+            />
+          </Tooltip>
+        ))}
+      </Stack>
+    );
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (newMessage.trim()) {
-      onSendMessage(newMessage);
+      var temp = replyTo?.id;
+      onSendMessage(newMessage, temp);
       setNewMessage('');
-      setShouldAutoScroll(true); // Enable auto-scroll when sending a message
+      setReplyTo(null);
+      setShouldAutoScroll(true);
     }
   };
 
+  const handleReply = (message) => {
+    setReplyTo(message);
+    setShouldAutoScroll(true);
+    handleCloseMenu(); // Close the menu after replying
+  };
+
   const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
+  const handleReact = (message, emoji) => {
+    onReactMessage(message.id, emoji, message.message_type);
+    setShowEmojiPicker(false);
+    handleCloseMenu(); // Close the menu after reacting
+  };
+
+  const handleEmojiToggle = () => {
+    setShowEmojiPicker((prev) => !prev);
+  };
+
+  const handleEmojiSelect = (emojiObject) => {
+    if (selectedMessageForMenu) {
+      handleReact(selectedMessageForMenu, emojiObject.emoji);
+      setShowEmojiPicker(false);
+    } else {
+      setNewMessage((prev) => prev + emojiObject.emoji);
+    }
+  };
+  // Menu handling functions
+  const handleOpenMenu = (event, message) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedMessageForMenu(message);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+    setSelectedMessageForMenu(null);
+  };
+
+
   if (!selectedChat) {
     return (
-      <div className="message-window">
-        <div className="no-chat-selected">
+      <Box
+        className="message-window"
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%'
+        }}
+      >
+        <Typography color="text.secondary">
           Select a channel or user to start chatting
-        </div>
-      </div>
+        </Typography>
+      </Box>
     );
   }
 
   return (
-    <div className="message-window">
-      <div className="chat-header">
-      {selectedChat.type === 'channel' 
-        ? `# ${selectedChat.name}` 
-        : selectedChat.username || 'Unknown User'}
-        <span className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-          {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-        </span>
-      </div>
-      
-      <div 
-        className="messages-container"
+    <Box
+      sx={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        bgcolor: 'background.paper',
+        borderRadius: 1,
+        overflow: 'hidden'
+      }}
+    >
+      <Paper
+        elevation={2}
+        sx={{
+          p: 1.5,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}
+      >
+        <Typography variant="subtitle1" noWrap>
+          {selectedChat?.type === 'channel'
+            ? `# ${selectedChat.name}`
+            : selectedChat?.username || 'Select a chat'}
+        </Typography>
+        <Chip
+          label={isConnected ? 'Connected' : 'Disconnected'}
+          color={isConnected ? 'success' : 'error'}
+          size="small"
+        />
+      </Paper>
+
+      <Box
         ref={messagesContainerRef}
         onScroll={handleScroll}
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+          p: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.5
+        }}
       >
         {messages.length === 0 ? (
-          <div className="no-messages">No messages yet</div>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%'
+            }}
+          >
+            <Typography color="text.secondary">No messages yet</Typography>
+          </Box>
         ) : (
           messages.map((message, index) => {
             const isOwnMessage = message.sender === localStorage.getItem('username');
-            const showSender = index === 0 || 
-              messages[index - 1].sender !== message.sender;
-
+            const showSender = index === 0 || messages[index - 1].sender !== message.sender;
+            const showReply = !!message.reply_to;
             return (
-              <div 
+              <Box
                 key={message.id || index}
-                className={`message ${isOwnMessage ? 'own-message' : ''}`}
+                sx={{
+                  alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+                  maxWidth: '50%'
+                }}
               >
-                {showSender && (
-                <div className="message-sender">{message.sender.toString() || 'Unknown'}</div>
+                {showReply && (
+                  <Paper elevation={0} sx={{ pl: 2, mb: 0.5, bgcolor: 'grey.200' }}>
+                    <Typography variant="caption">{`Replying to: ${message.replied_message}`}</Typography>
+                  </Paper>
                 )}
-
-                <div className="message-content">
-                  {message.content}
-                  <span className="message-timestamp">
-                    {formatTimestamp(message.timestamp)}
-                  </span>
-                </div>
-              </div>
+                {showSender && (
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ ml: 1, mb: 0.25, display: 'block' }}
+                  >
+                    {message.sender.toString() || 'Unknown'}
+                  </Typography>
+                )}
+                <Paper
+                  elevation={1}
+                  sx={{
+                    py: 0.75,
+                    px: 1.5,
+                    bgcolor: isOwnMessage ? 'primary.main' : 'grey.100',
+                    color: isOwnMessage ? 'white' : 'text.primary',
+                    borderRadius: 2,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Typography variant="body2">{message.content}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', ml: 2 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            opacity: 0.8,
+                            fontSize: '0.7rem'
+                          }}
+                        >
+                          {formatTimestamp(message.timestamp)}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleOpenMenu(e, message)}
+                          sx={{ padding: 0.25 }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    <MessageReactions reactions={message.reactions} />
+                  </Box>
+                </Paper>
+              </Box>
             );
           })
         )}
         <div ref={messagesEndRef} />
-      </div>
+      </Box>
 
-      <form onSubmit={handleSubmit} className="message-input-form">
-        <input
-          type="text"
+      {/* Reply Context */}
+      {replyTo && (
+        <Paper sx={{ p: 1, bgcolor: 'grey.300', display: 'flex', justifyContent: 'space-between' }}>
+          <Typography variant="body2">{`Replying to: ${replyTo.content}`}</Typography>
+          <Button size="small" onClick={() => setReplyTo(null)}>
+            Cancel
+          </Button>
+        </Paper>
+      )}
+      <Paper
+        component="form"
+        onSubmit={handleSubmit}
+        sx={{
+          p: 1.5,
+          borderTop: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          gap: 1
+        }}
+      >
+        <TextField
+          fullWidth
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder={isConnected ? "Type a message..." : "Connecting..."}
           disabled={!isConnected}
-          className={!isConnected ? 'disabled' : ''}
+          variant="outlined"
+          size="small"
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title="Emoji">
+                  <IconButton onClick={handleEmojiToggle}>
+                    <EmojiIcon />
+                  </IconButton>
+                </Tooltip>
+                <IconButton
+                  type="submit"
+                  disabled={!isConnected || !newMessage.trim()}
+                  color="primary"
+                >
+                  <SendIcon />
+                </IconButton>
+              </InputAdornment>
+            )
+          }}
         />
-        <button 
-          type="submit" 
-          disabled={!isConnected || !newMessage.trim()}
+      </Paper>
+
+      <Modal
+        open={showEmojiPicker}
+        onClose={() => setShowEmojiPicker(false)}
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1300, // Ensure it's above other elements
+        }}
+      >
+        <Box
+          sx={{
+            bgcolor: 'background.paper',
+            borderRadius: 2,
+            boxShadow: 24,
+            p: 2,
+            transform: 'scale(1.2)', // Make it bigger
+            overflow: 'hidden', // Prevent the picker from overflowing the box
+          }}
         >
-          Send
-        </button>
-      </form>
-    </div>
+          <EmojiPicker
+            onEmojiClick={handleEmojiSelect}
+            width={480}
+            height={460}
+          />
+        </Box>
+      </Modal>
+
+      {/* Menu Component */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleCloseMenu}
+      >
+        <MenuItem onClick={() => handleReply(selectedMessageForMenu)}>
+          <ReplyIcon sx={{ mr: 1 }} fontSize="small" />
+          Reply
+        </MenuItem>
+        <MenuItem onClick={() => setShowEmojiPicker(true)}>
+          <EmojiIcon sx={{ mr: 1 }} fontSize="small" />
+          React
+        </MenuItem>
+      </Menu>
+    </Box>
   );
 }
 
