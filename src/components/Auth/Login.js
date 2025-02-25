@@ -170,6 +170,7 @@ function Login({ setIsAuthenticated }) {
       if (response.ok) {
         localStorage.setItem('token', data.access);
         localStorage.setItem('username', data.username);
+        localStorage.setItem('user_id', data.user_id);
         setIsAuthenticated(true);
         navigate('/teams');
       } else {

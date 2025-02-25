@@ -1,379 +1,558 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
 import {
-  Drawer,
-  List,
-  ListItemText,
-  ListItemIcon,
-  ListItemButton,
-  Divider,
-  Typography,
-  TextField,
-  IconButton,
   Box,
+  Drawer,
+  Divider,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Typography,
+  IconButton,
+  TextField,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
+  Toolbar,
   Avatar,
+  Collapse,
   Menu,
-  MenuItem
+  MenuItem,
+  Tooltip,
+  Badge,
+  Paper,
 } from '@mui/material';
 import {
   Tag as TagIcon,
+  AddCircleOutline as AddCircleOutlineIcon,
   Person as PersonIcon,
+  ExpandLess,
+  ExpandMore,
+  Chat as ChatIcon,
+  Lock as LockIcon,
+  Menu as MenuIcon,
+  Search as SearchIcon,
   Add as AddIcon,
+  AccountCircle as AccountCircleIcon,
+  Message as MessageIcon,
   Chat,
-  Settings as SettingsIcon,
-  Logout as LogoutIcon,
-  SwapHoriz as SwapTeamIcon
+  Settings as SettingsIcon, // Import Settings icon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
-const DRAWER_WIDTH = 280;
+// Drawer width for desktop view
+const drawerWidth = 280;
 
-// Animated logo component
-const AnimatedLogo = () => (
-  <motion.div
-    initial={{ scale: 0.5, opacity: 0 }}
-    animate={{ scale: 1, opacity: 1 }}
-    transition={{ duration: 0.5 }}
-  >
-    <Box sx={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 1,
-      mb: 3,
-      mt: 2
-    }}>
-      <Chat sx={{ fontSize: 40, color: 'primary.main' }} />
-      <Typography 
-        variant="h4" 
-        component="span" 
-        fontWeight="bold"
-        sx={{
-          background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}
-      >
-        SynQ
-      </Typography>
-    </Box>
-  </motion.div>
-);
+// const AnimatedLogo = () => (
+//   <motion.div
+//     initial={{ scale: 0.5, opacity: 0 }}
+//     animate={{ scale: 1, opacity: 1 }}
+//     transition={{ duration: 0.5 }}
+//   >
+//     <Box sx={{
+//       display: 'flex',
+//       alignItems: 'center',
+//       justifyContent: 'center',
+//       gap: 2,
+//       mb: 3
+//     }}>
+//       <Chat sx={{ fontSize: 36, color: 'primary.main' }} />
+//       <Typography
+//         variant="h4"
+//         component="span"
+//         fontWeight="bold"
+//         sx={{
+//           background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+//           WebkitBackgroundClip: 'text',
+//           WebkitTextFillColor: 'transparent'
+//         }}
+//       >
+//         SynQ
+//       </Typography>
+//     </Box>
+//   </motion.div>
+// );
 
-const Sidebar = ({ channels, interactedUsers, selectedChat, onSelectChat, teamId, setIsAuthenticated }) => {
+const Sidebar = ({
+  channels,
+  teamMembers,
+  interactedUsers,
+  selectedChannel,
+  onChannelSelect,
+  onCreateChannel,
+  onCreateOrGetDMChannel,
+  mobileOpen,
+  handleDrawerToggle,
+  isMobile,
+  teamId,
+}) => {
   const navigate = useNavigate();
+  const currentUserId = localStorage.getItem('user_id');
+
+  // State variables for UI elements
+  const [channelDialogOpen, setChannelDialogOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
-  const [allUsers, setAllUsers] = useState([]);
-  const [showUserList, setShowUserList] = useState(false);
-  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showChannels, setShowChannels] = useState(true);
+  const [showDirectMessages, setShowDirectMessages] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // State for new conversation dropdown menu
+  const [dmMenuAnchorEl, setDmMenuAnchorEl] = useState(null);
+  const isDmMenuOpen = Boolean(dmMenuAnchorEl);
+
+  // State for settings menu
   const [settingsAnchorEl, setSettingsAnchorEl] = useState(null);
+  const isSettingsMenuOpen = Boolean(settingsAnchorEl);
 
-  useEffect(() => {
-    if (teamId) {
-      fetch(`http://localhost:8000/api/chat/users/in_team/?team_id=${teamId}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      })
-        .then((res) => res.json())
-        .then((data) => setAllUsers(data))
-        .catch((error) => console.error('Error fetching users:', error));
+  // Get non-DM channels
+  const groupChannels = channels.filter((c) => !c.is_direct_message);
+
+  // Get DM channels
+  const dmChannels = channels.filter((c) => c.is_direct_message);
+
+  // Handle channel creation
+  const handleCreateChannelClick = () => {
+    if (newChannelName.trim()) {
+      onCreateChannel(newChannelName.trim());
+      setNewChannelName('');
+      setChannelDialogOpen(false);
     }
-  }, [teamId]);
-
-  const isSelected = (item) => {
-    if (!selectedChat) return false;
-    return selectedChat.id === item.id && selectedChat.type === (item.type || 'channel');
   };
 
+  // Handle logout
   const handleLogout = () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('username');
-    setIsAuthenticated(false);
     navigate('/login');
+  };
+
+  // Handle team selection navigation
+  const handleTeamSelection = () => {
+    navigate('/teams'); // Replace with your actual route
+    handleSettingsMenuClose();
+  };
+
+  // Find user name for DM channel display
+  const getDMChannelName = (channel) => {
+    const dmUser = interactedUsers.find((user) => user.channel_id === channel.id);
+    return dmUser ? dmUser.username : channel.name;
+  };
+
+  // Get all team members that aren't already in a DM and not the current user
+  const getAvailableDMUsers = () => {
+    // Get IDs of users already in DMs
+    const currentDMUserIds = interactedUsers.map((user) => user.id);
+
+    // Filter out current user and users already in DMs
+    return teamMembers.filter(
+      (member) => member.id.toString() !== currentUserId && !currentDMUserIds.includes(member.id)
+    );
+  };
+
+  // Open conversation dropdown menu
+  const handleDmMenuOpen = (event) => {
+    setDmMenuAnchorEl(event.currentTarget);
+  };
+
+  // Close conversation dropdown menu
+  const handleDmMenuClose = () => {
+    setDmMenuAnchorEl(null);
+  };
+
+  // Create a new DM with a team member
+  const startNewDM = async (userId) => {
+    onCreateOrGetDMChannel(userId);
+    handleDmMenuClose();
+  };
+
+  // Filter channels by search query
+  const filterItems = (items, getItemName) => {
+    if (!searchQuery) return items;
+    return items.filter((item) => getItemName(item).toLowerCase().includes(searchQuery.toLowerCase()));
+  };
+
+  const filteredGroupChannels = filterItems(groupChannels, (channel) => channel.name);
+  const filteredDmChannels = filterItems(dmChannels, (channel) => getDMChannelName(channel));
+
+  // Settings menu open
+  const handleSettingsMenuOpen = (event) => {
+    setSettingsAnchorEl(event.currentTarget);
+  };
+
+  //Settings menu close
+  const handleSettingsMenuClose = () => {
     setSettingsAnchorEl(null);
   };
 
-  const handleSwitchTeams = () => {
-    navigate('/teams');
-    setSettingsAnchorEl(null);
-  };
-
-  const sendMessage = async (user) => {
-    try {
-      const response = await fetch('http://localhost:8000/api/chat/messages/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ 
-          "content": "Hey!",
-          "message_type": "direct",
-          "recipient": user.id 
-        }),
-      });
-
-      console.log("Send response : ", response)
-      onSelectChat({ type: 'direct', ...user });
-      setShowUserList(false);
-    } catch (error) {
-      console.log("Error : ", error)
-    }
-  }
-
-  const createNewChannel = async () => {
-    if (!newChannelName.trim() || !teamId) return;
-
-    try {
-      const response = await fetch('http://localhost:8000/api/chat/channels/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ 
-          name: newChannelName, 
-          team: teamId
-        }),
-      });
-
-      if (response.ok) {
-        const newChannel = await response.json();
-        channels.push(newChannel);
-        setNewChannelName("");
-        setShowCreateChannel(false); // Close dialog after creation
-      } else {
-        console.error('Failed to add channel');
-      }
-    } catch (error) {
-      console.error('Error adding channel:', error);
-    }
-  }
-
-  return (
-    <Drawer
-      variant="permanent"
+  // Sidebar content shared between mobile and desktop views
+  const drawerContent = (
+    <Box
       sx={{
-        width: DRAWER_WIDTH,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          bgcolor: '#f8f9fa',
-          borderRight: '1px solid rgba(0, 0, 0, 0.12)',
-          display: 'flex',
-          flexDirection: 'column'
-        }
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: 'background.paper',
       }}
     >
-      <AnimatedLogo />
-      
-      <Box sx={{ 
-        p: 2,
-        flex: 1,
-        overflowY: 'auto',
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(248,249,250,0.9) 100%)'
-      }}>
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          mb: 2,
-          p: 1,
-          borderRadius: 1,
-          bgcolor: 'rgba(33, 150, 243, 0.1)'
-        }}>
-          <Typography variant="h6" sx={{ flex: 1, color: '#1976d2' }}>Channels</Typography>
-          <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-            <IconButton 
-              size="small" 
-              onClick={() => setShowCreateChannel(true)}
-              sx={{ color: '#1976d2' }}
-            >
-              <AddIcon />
-            </IconButton>
-          </motion.div>
-        </Box>
+      <Toolbar
+        sx={{
+          justifyContent: 'space-between',
+          borderBottom: 1,
+          borderColor: 'divider',
+          px: 2,
+        }}
+      >
+        <Typography
+          variant="h4"
+          component="span"
+          fontWeight="bold"
+          sx={{
+            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}
+        >
+          <Chat sx={{ fontSize: 25, color: 'primary.main' }} /> SynQ
+        </Typography>
+        {isMobile && (
+          <IconButton onClick={handleDrawerToggle} edge="end">
+            <MenuIcon />
+          </IconButton>
+        )}
+      </Toolbar>
 
-        <List dense>
-          <AnimatePresence>
-            {channels.map(channel => (
-              <motion.div
-                key={channel.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ListItemButton
-                  selected={isSelected(channel)}
-                  onClick={() => onSelectChat({ type: 'channel', ...channel })}
-                  sx={{
-                    borderRadius: 1,
-                    mb: 0.5,
-                    '&.Mui-selected': {
-                      bgcolor: 'primary.main',
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: 'primary.dark',
-                      },
-                      '& .MuiListItemIcon-root': {
-                        color: 'white',
-                      }
-                    },
-                    '&:hover': {
-                      bgcolor: 'rgba(25, 118, 210, 0.08)',
-                    }
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 36 }}>
-                    <TagIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary={channel.name} />
-                </ListItemButton>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </List>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          mb: 2,
-          p: 1,
-          borderRadius: 1,
-          bgcolor: 'rgba(33, 150, 243, 0.1)'
-        }}>
-          <Typography variant="h6" sx={{ flex: 1, color: '#1976d2' }}>Direct Messages</Typography>
-          <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-            <IconButton 
-              size="small" 
-              onClick={() => setShowUserList(!showUserList)}
-              sx={{ color: '#1976d2' }}
-            >
-              <AddIcon />
-            </IconButton>
-          </motion.div>
-        </Box>
-
-        <List dense>
-          <AnimatePresence>
-            {interactedUsers.map(user => (
-              <motion.div
-                key={user.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ListItemButton
-                  selected={isSelected({ ...user, type: 'direct' })}
-                  onClick={() => onSelectChat({ type: 'direct', ...user })}
-                  sx={{
-                    borderRadius: 1,
-                    mb: 0.5,
-                    '&.Mui-selected': {
-                      bgcolor: 'primary.main',
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: 'primary.dark',
-                      },
-                      '& .MuiListItemIcon-root': {
-                        color: 'white',
-                      }
-                    },
-                    '&:hover': {
-                      bgcolor: 'rgba(25, 118, 210, 0.08)',
-                    }
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 36 }}>
-                    <Avatar sx={{ width: 24, height: 24, fontSize: '0.875rem' }}>
-                      {user.username[0].toUpperCase()}
-                    </Avatar>
-                  </ListItemIcon>
-                  <ListItemText primary={user.username} />
-                </ListItemButton>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </List>
+      <Box sx={{ px: 2, py: 1.5 }}>
+        <TextField
+          fullWidth
+          placeholder="Search channels & messages"
+          size="small"
+          variant="outlined"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+            sx: { borderRadius: 2 },
+          }}
+        />
       </Box>
 
-      {/* Settings Button */}
-      <Box sx={{ 
-        p: 2, 
-        borderTop: '1px solid rgba(0, 0, 0, 0.12)',
-        bgcolor: 'background.paper'
-      }}>
-        <motion.div whileHover={{ scale: 1.05 }}>
-          <IconButton 
-            onClick={(e) => setSettingsAnchorEl(e.currentTarget)}
-            sx={{ 
-              width: '100%',
-              bgcolor: 'rgba(33, 150, 243, 0.1)',
-              '&:hover': {
-                bgcolor: 'rgba(33, 150, 243, 0.2)',
-              }
+      <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1 }}>
+        {/* Channels Section */}
+        <ListItem
+          disablePadding
+          sx={{
+            mb: 1,
+            borderRadius: 1,
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <ListItemButton onClick={() => setShowChannels(!showChannels)} sx={{ borderRadius: 1 }}>
+            <ListItemText primary="Channels" primaryTypographyProps={{ fontWeight: 600 }} />
+            {showChannels ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+          <Tooltip title="Create new channel">
+            <IconButton size="small" onClick={() => setChannelDialogOpen(true)} sx={{ mr: 1 }}>
+              <AddCircleOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </ListItem>
+
+        <Collapse in={showChannels} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding sx={{ mb: 1 }}>
+            {filteredGroupChannels.length > 0 ? (
+              filteredGroupChannels.map((channel) => (
+                <ListItem key={channel.id} disablePadding>
+                  <ListItemButton
+                    selected={selectedChannel?.id === channel.id}
+                    onClick={() => onChannelSelect(channel)}
+                    sx={{
+                      pl: 3,
+                      borderRadius: 1,
+                      mb: 0.5,
+                      '&.Mui-selected': {
+                        bgcolor: 'primary.light',
+                        '&:hover': {
+                          bgcolor: 'primary.light',
+                        },
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      {channel.channel_type === 'private' ? (
+                        <LockIcon fontSize="small" color="action" />
+                      ) : (
+                        <TagIcon fontSize="small" color="primary" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={channel.name}
+                      primaryTypographyProps={{
+                        noWrap: true,
+                        fontSize: '0.95rem',
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))
+            ) : (
+              <ListItem sx={{ pl: 3 }}>
+                <ListItemText
+                  primary="No channels found"
+                  primaryTypographyProps={{
+                    variant: 'body2',
+                    color: 'text.secondary',
+                    fontSize: '0.9rem',
+                  }}
+                />
+              </ListItem>
+            )}
+          </List>
+        </Collapse>
+
+        {/* Direct Messages Section */}
+        <ListItem
+          disablePadding
+          sx={{
+            mt: 1,
+            borderRadius: 1,
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <ListItemButton onClick={() => setShowDirectMessages(!showDirectMessages)} sx={{ borderRadius: 1 }}>
+            <ListItemText primary="Direct Messages" primaryTypographyProps={{ fontWeight: 600 }} />
+            {showDirectMessages ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+
+          <Tooltip title="Start new conversation">
+            <IconButton
+              size="small"
+              onClick={handleDmMenuOpen}
+              sx={{ mr: 1 }}
+              disabled={getAvailableDMUsers().length === 0}
+              color="primary"
+            >
+              <MessageIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Menu
+            anchorEl={dmMenuAnchorEl}
+            open={isDmMenuOpen}
+            onClose={handleDmMenuClose}
+            PaperProps={{
+              sx: { width: 220, maxHeight: 300 },
             }}
           >
-            <SettingsIcon sx={{ color: '#1976d2' }} />
-          </IconButton>
-        </motion.div>
+            <Typography variant="subtitle2" sx={{ px: 2, py: 1, color: 'text.secondary' }}>
+              Start a conversation
+            </Typography>
+            <Divider />
+
+            {getAvailableDMUsers().length > 0 ? (
+              getAvailableDMUsers().map((member) => (
+                <MenuItem key={member.id} onClick={() => startNewDM(member.id)} sx={{ py: 1 }}>
+                  <Avatar sx={{ width: 28, height: 28, mr: 1.5, bgcolor: 'primary.main' }}>
+                    {member.username?.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Typography variant="body2">{member.username}</Typography>
+                </MenuItem>
+              ))
+            ) : (
+              <MenuItem disabled>
+                <Typography variant="body2" color="text.secondary">
+                  No more users available
+                </Typography>
+              </MenuItem>
+            )}
+          </Menu>
+        </ListItem>
+
+        <Collapse in={showDirectMessages} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {filteredDmChannels.length > 0 ? (
+              filteredDmChannels.map((channel) => (
+                <ListItem key={channel.id} disablePadding>
+                  <ListItemButton
+                    selected={selectedChannel?.id === channel.id}
+                    onClick={() => onChannelSelect(channel)}
+                    sx={{
+                      pl: 3,
+                      borderRadius: 1,
+                      mb: 0.5,
+                      '&.Mui-selected': {
+                        bgcolor: 'primary.light',
+                        '&:hover': {
+                          bgcolor: 'primary.light',
+                        },
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem', bgcolor: 'secondary.light' }}>
+                        {getDMChannelName(channel)?.charAt(0).toUpperCase()}
+                      </Avatar>
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={getDMChannelName(channel)}
+                      primaryTypographyProps={{
+                        noWrap: true,
+                        fontSize: '0.95rem',
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))
+            ) : (
+              <ListItem sx={{ pl: 3 }}>
+                <ListItemText
+                  primary="No direct messages found"
+                  primaryTypographyProps={{
+                    variant: 'body2',
+                    color: 'text.secondary',
+                    fontSize: '0.9rem',
+                  }}
+                />
+              </ListItem>
+            )}
+          </List>
+        </Collapse>
       </Box>
 
-      {/* Settings Menu */}
-      <Menu
-        anchorEl={settingsAnchorEl}
-        open={Boolean(settingsAnchorEl)}
-        onClose={() => setSettingsAnchorEl(null)}
-        anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'right',
-        }}
-        transformOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
-        }}
-      >
-        <MenuItem onClick={handleSwitchTeams}>
-          <ListItemIcon>
-            <SwapTeamIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Switch Teams" />
-        </MenuItem>
-        <MenuItem onClick={handleLogout}>
-          <ListItemIcon>
-            <LogoutIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Logout" />
-        </MenuItem>
-      </Menu>
-
-      {/* Create Channel Dialog */}
-      <Dialog 
-        open={showCreateChannel} 
-        onClose={() => setShowCreateChannel(false)}
-        PaperProps={{
-          sx: {
+      {/* Settings Section */}
+      <Box p={2} sx={{ borderTop: 1, borderColor: 'divider', mt: 1 }}>
+        <Button
+          variant="contained"
+          fullWidth
+          onClick={handleSettingsMenuOpen}
+          color="secondary"
+          sx={{
             borderRadius: 2,
-            bgcolor: 'background.paper',
-          }
-        }}
-      >
-        <DialogTitle>Create New Channel</DialogTitle>
+            textTransform: 'none',
+            py: 1,
+          }}
+          startIcon={<SettingsIcon />} // Use Settings icon here
+        >
+          Settings
+        </Button>
+
+        <Menu
+          anchorEl={settingsAnchorEl}
+          open={isSettingsMenuOpen}
+          onClose={handleSettingsMenuClose}
+          PaperProps={{
+            sx: {
+              width: 220,
+              borderRadius: 2,
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              mt: 1,
+              py: 1,
+            },
+          }}
+          TransitionProps={{
+            onEntering: (node) => {
+              node.style.transformOrigin = 'top right';
+            },
+          }}
+        >
+          <MenuItem
+            onClick={handleLogout}
+            sx={{
+              px: 2,
+              py: 1.5,
+              borderRadius: 1,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+              },
+            }}
+          >
+            <ListItemIcon>
+              <AccountCircleIcon fontSize="small" />
+            </ListItemIcon>
+            <Typography variant="body2" fontWeight={500}>
+              Logout
+            </Typography>
+          </MenuItem>
+          <MenuItem
+            onClick={handleTeamSelection}
+            sx={{
+              px: 2,
+              py: 1.5,
+              borderRadius: 1,
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+              },
+            }}
+          >
+            <ListItemIcon>
+              <PersonIcon fontSize="small" />
+            </ListItemIcon>
+            <Typography variant="body2" fontWeight={500}>
+              Team Selection
+            </Typography>
+          </MenuItem>
+        </Menu>
+
+      </Box>
+    </Box>
+  );
+
+  return (
+    <>
+      {/* Mobile drawer */}
+      {isMobile && (
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', md: 'none' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              borderRight: 1,
+              borderColor: 'divider',
+            },
+          }}
+        >
+          {drawerContent}
+        </Drawer>
+      )}
+
+      {/* Desktop drawer */}
+      {!isMobile && (
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              borderRight: 1,
+              borderColor: 'divider',
+            },
+            width: drawerWidth,
+            flexShrink: 0,
+          }}
+          open
+        >
+          {drawerContent}
+        </Drawer>
+      )}
+
+      {/* Channel creation dialog */}
+      <Dialog open={channelDialogOpen} onClose={() => setChannelDialogOpen(false)}>
+        <DialogTitle>Create a new channel</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             margin="dense"
+            id="name"
             label="Channel Name"
+            type="text"
             fullWidth
             variant="outlined"
             value={newChannelName}
@@ -381,66 +560,13 @@ const Sidebar = ({ channels, interactedUsers, selectedChat, onSelectChat, teamId
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowCreateChannel(false)}>Cancel</Button>
-          <Button 
-            onClick={createNewChannel} 
-            variant="contained"
-            sx={{
-              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-            }}
-          >
+          <Button onClick={() => setChannelDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreateChannelClick} variant="contained" color="primary">
             Create
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* User List Dialog */}
-      <Dialog 
-        open={showUserList} 
-        onClose={() => setShowUserList(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            bgcolor: 'background.paper',
-          }
-        }}
-      >
-        <DialogTitle>Start New Conversation</DialogTitle>
-        <DialogContent>
-          <List>
-            <AnimatePresence>
-              {allUsers.map((user) => (
-                <motion.div
-                  key={user.id}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ListItemButton
-                    onClick={() => sendMessage(user)}
-                    sx={{
-                      borderRadius: 1,
-                      mb: 0.5,
-                      '&:hover': {
-                        bgcolor: 'rgba(25, 118, 210, 0.08)',
-                      }
-                    }}
-                  >
-                    <ListItemIcon>
-                      <Avatar sx={{ bgcolor: 'primary.main' }}>
-                        {user.username[0].toUpperCase()}
-                      </Avatar>
-                    </ListItemIcon>
-                    <ListItemText primary={user.username} />
-                  </ListItemButton>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </List>
-        </DialogContent>
-      </Dialog>
-    </Drawer>
+    </>
   );
 };
 

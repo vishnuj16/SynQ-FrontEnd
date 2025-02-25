@@ -1,310 +1,350 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Box, CssBaseline, useMediaQuery, useTheme } from '@mui/material';
 import Sidebar from './Sidebar';
 import MessageWindow from './MessageWindow';
-import { Box } from '@mui/material';
+import axios from 'axios';
 
-function ChatInterface({ setIsAuthenticated }) {
+const ChatInterface = ({ setIsAuthenticated }) => {
   const { teamId } = useParams();
-  const [channels, setChannels] = useState([]);
-  const [interactedUsers, setInteractedUsers] = useState([]);
-  const [selectedChat, setSelectedChat] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-
-  const handleWebSocketMessage = useCallback((data) => {
-    console.log('Received WebSocket data:', data);
-    
-    try {
-      // Handle initial messages fetch response
-      if (data.type === 'channel_messages' || data.type === 'direct_messages') {
-        console.log('Setting initial messages:', data.messages);
-        setMessages(data.messages);
-        return;
-      }
-
-      if (data.type === 'reaction_update') {
-        console.log('Updating message reactions:', data);
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === data.message_id 
-              ? { ...msg, reactions: data.reactions }
-              : msg
-          )
-        );
-        return;
-      }
-
-      if (data.message_type === 'channels') {
-        if (selectedChat?.type === 'channel' && data.channel_id === selectedChat.id) {
-          setMessages(prevMessages => [...prevMessages, data]);
-        }
-      } else if (data.message_type === 'direct') {
-        if (selectedChat?.type === 'direct') {
-            console.log('Adding new direct message');
-            setMessages(prevMessages => [...prevMessages, data]);
-        }
-      }
-
-    } catch (error) {
-      console.error('Error handling WebSocket message:', error);
-    }
-  }, [selectedChat]);
-
-  const fetchChannels = useCallback(async () => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/chat/channels/team_id/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ team_id: teamId })
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setChannels(data);
-    } catch (error) {
-      console.error('Error fetching channels:', error);
-    }
-  }, [teamId]);
-
-  const onReactMessage = async (messageId, reaction, type) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/chat/messages/${messageId}/react/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ reaction })
-      });
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  // WebSocket reference
+  const socketRef = useRef(null);
+  
+  // State variables
+  const [channels, setChannels] = useState([]);
+  const [selectedChannel, setSelectedChannel] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [interactedUsers, setInteractedUsers] = useState([]);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const reconnectTimeoutRef = useRef(null);
+  
+  // Connect to WebSocket
+  useEffect(() => {
+    // Get token from local storage
+
+    const connectWebSocket = () => {
+      const token = localStorage.getItem('token');
       
-      // Send WebSocket message to notify about reaction
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          message_type: 'reaction',
-          message_id: messageId,
-          reaction: reaction,
-          type
-        }));
-      }
-      console.log('Reaction added : ', reaction ,response)
-    } catch (error) {
-      console.error('Error reacting to message:', error);
-    }
-  };
-
-  const fetchMessages = useCallback(async () => {
-    if (!selectedChat) return;
-
-    try {
-      let url;
-      if (selectedChat.type === 'channel') {
-        url = `http://localhost:8000/api/chat/channels/${selectedChat.id}/messages/`;
-      } else {
-        url = `http://localhost:8000/api/chat/messages/direct_messages/?user_id=${selectedChat.id}`;
+      if (!token) {
+        setIsAuthenticated(false);
+        navigate('/login');
+        return;
       }
 
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setMessages(data);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    }
-  }, [selectedChat]);
-
-  const connectWebSocket = useCallback(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No token available for WebSocket connection');
-      return;
-    }
-
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    try {
-      wsRef.current = new WebSocket(`ws://localhost:8000/ws/chat/?token=${token}`);
-
-      wsRef.current.onopen = () => {
-        console.log("WebSocket connected");
-        setWsConnected(true);
-        if (selectedChat) {
-          const request = selectedChat.type === 'channel' 
-            ? { message_type: 'get_channel_messages', channel_id: selectedChat.id }
-            : { message_type: 'get_direct_messages', user_id: selectedChat.id };
-          wsRef.current.send(JSON.stringify(request));
-        }
+      // Initialize WebSocket connection
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws/chat/?token=${token}`;
+      socketRef.current = new WebSocket(wsUrl);
+      
+      socketRef.current.onopen = () => {
+        console.log('WebSocket connection established');
+        fetchInitialData();
       };
-
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleWebSocketMessage(data);
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
-        }
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error("WebSocket Error:", error);
-        setWsConnected(false);
-      };
-
-      wsRef.current.onclose = (event) => {
-        console.log("WebSocket closed:", event);
-        setWsConnected(false);
+      
+      socketRef.current.onclose = (e) => {
+        console.log('WebSocket connection closed', e);
+        // Handle reconnection logic if needed
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+          if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
             console.log('Attempting to reconnect...');
             connectWebSocket();
           }
-        }, 3000);
+        }, 3000)
+
       };
-    } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
-      setWsConnected(false);
+      
+      socketRef.current.onerror = (err) => {
+        console.error('WebSocket error', err);
+        // setError('Failed to connect to the chat server. Please refresh the page.');
+      };
+      
+      socketRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      };
+      
     }
-  }, [handleWebSocketMessage, selectedChat]);
-
-  const handleChatSelect = (chat) => {
-    console.log("checking chat selected : ", chat)
-    setSelectedChat(chat);
-    setMessages([]); // Clear messages before loading new ones
-  };
-
-  const fetchInteractedUsers = useCallback(async () => {
-    console.log("Team ID : ", teamId)
-    if (!teamId) {
-        console.error('Team ID is required to fetch interacted users.');
-        return;
-    }
-
-    try {
-        const response = await fetch(`http://localhost:8000/api/chat/users/interacted/?team_id=${teamId}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        });
-
-        console.log(response)
-
-        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-
-        const data = await response.json();
-        setInteractedUsers(data);
-    } catch (error) {
-        console.error('Error fetching interacted users:', error);
-    }
-}, [teamId]);
-
-
-  useEffect(() => {
     connectWebSocket();
-    fetchChannels();
-    fetchInteractedUsers();
 
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      if (wsRef.current) {
-        wsRef.current.close();
+      if (socketRef.current) {
+        socketRef.current.close();
       }
     };
-  }, [teamId, fetchChannels, connectWebSocket]);
-
-  useEffect(() => {
-    fetchMessages();
-  }, [selectedChat, fetchMessages]);
-
-  // useEffect(() => {
-  //   if (wsConnected && selectedChat) {
-  //     const request = selectedChat.type === 'channel' 
-  //       ? { message_type: 'get_channel_messages', channel_id: selectedChat.id }
-  //       : { message_type: 'get_direct_messages', user_id: selectedChat.id };
+    
+  }, [teamId, navigate, setIsAuthenticated, messages]);
   
-  //     wsRef.current.send(JSON.stringify(request));
-  //   }
-  // }, [selectedChat, wsConnected]);
+  // Fetch initial data when WebSocket is connected
+  const fetchInitialData = () => {
+    setLoading(true);
+    
+    // Fetch channels
+    fetchChannels();
+    
+    // Fetch team members
+    sendWebSocketMessage({
+      message_type: 'get_team_members',
+      team_id: teamId
+    });
+    
+    // Fetch interacted users (for DMs)
+    sendWebSocketMessage({
+      message_type: 'get_interacted_users',
+      team_id: teamId
+    });
+    
+    setLoading(false);
+  };
   
-
-  const sendMessage = (content, reply_to) => {
-    if (!selectedChat || !content.trim() || !wsConnected) {
-      console.log('Cannot send message:', {
-        selectedChat: !!selectedChat,
-        contentProvided: !!content.trim(),
-        wsConnected
-      });
-      return;
-    }
-
+  // Fetch channels from API
+  const fetchChannels = async () => {
     try {
-      const message = {
-        message_type: selectedChat.type === 'channel' ? 'channel_message' : 'direct_message',
-        content,
-        team_id: teamId,
-        ...(selectedChat.type === 'channel' 
-          ? { channel: selectedChat.id }
-          : { recipient: selectedChat.id }
-        ),
-        reply_to: reply_to || null
-      };
-      console.log('Sending message:', message);
-
-      wsRef.current.send(JSON.stringify(message));
+      const response = await axios.post('http://localhost:8000/api/chat/channels/team_id/', {
+        team_id: teamId
+      }, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      setChannels(response.data);
+      
+      // Select the first channel by default if no channel is selected
+      if (response.data.length > 0 && !selectedChannel) {
+        const defaultChannel = response.data.find(c => !c.is_direct_message) || response.data[0];
+        setSelectedChannel(defaultChannel);
+        fetchChannelMessages(defaultChannel.id);
+      }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error fetching channels:', error);
+      setError('Failed to load channels. Please try again later.');
     }
   };
-
-  return (
-    <div>
-      <Box
-        sx={{
-          display: 'flex',
-          height: 'calc(100vh - 64px)', // Subtract app bar height
-          bgcolor: 'background.default',
-          overflow: 'hidden'
-        }}
-      >
-        <Sidebar
-          channels={channels}
-          interactedUsers={interactedUsers}
-          selectedChat={selectedChat}
-          onSelectChat={handleChatSelect}
-          teamId={teamId}
-          setIsAuthenticated={setIsAuthenticated}
-        />
-        <MessageWindow
-          key={selectedChat?.id}
-          messages={messages}
-          selectedChat={selectedChat}
-          onSendMessage={sendMessage}
-          isConnected={wsConnected}
-          onReactMessage={onReactMessage}
-        />
-      </Box>
-    </div>
+  
+  // Fetch messages for a channel
+  const fetchChannelMessages = (channelId) => {
+    sendWebSocketMessage({
+      message_type: selectedChannel?.is_direct_message ? 'get_direct_messages' : 'get_channel_messages',
+      channel_id: channelId
+    });
+  };
+  
+  // Send message through WebSocket
+  const sendWebSocketMessage = (message) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket is not connected');
+      // setError('Connection to chat server lost. Please refresh the page.');
+    }
+  };
+  
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = (data) => {
+    console.log('Received WebSocket message:', data);
     
+    switch (data.type) {
+      case 'channel_messages':
+      case 'direct_messages':
+        setMessages(data.messages);
+        break;
+        
+      case 'team_members':
+        setTeamMembers(data.members);
+        break;
+        
+      case 'interacted_users':
+        setInteractedUsers(data.users);
+        break;
+        
+      case 'message_deleted':
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== data.message_id)
+        );
+        break;
+        
+      case 'reaction_update':
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === data.message_id ? { ...msg, reactions: data.reactions } : msg
+          )
+        );
+        break;
+        
+      default:
+        // Handle new message
+        if (data.type === 'direct' || data.type === 'channels') {
+          console.log('New message:', data);
+          if (selectedChannel && data.channel_id === selectedChannel.id) {
+            setMessages(prevMessages => [...prevMessages, data]);
+            console.log('Updated Messages : ', messages)
+          }
+        }
+        break;
+    }
+  };
+  
+  // Handle channel selection
+  const handleChannelSelect = (channel) => {
+    setSelectedChannel(channel);
+    fetchChannelMessages(channel.id);
+    if (isMobile) {
+      setMobileOpen(false);
+    }
+  };
+  
+  // Handle creating a new channel
+  const handleCreateChannel = (channelName) => {
+    sendWebSocketMessage({
+      message_type: 'create_channel',
+      team_id: teamId,
+      name: channelName
+    });
+  };
+  
+  // Handle creating or getting a DM channel
+  const handleCreateOrGetDMChannel = async (userId) => {
+    try {
+      const response = await axios.post('http://localhost:8000/api/chat/channels/create_or_get_dm_channel/', {
+        team_id: teamId,
+        user_id: userId
+      }, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      const dmChannel = response.data;
+      
+      // Check if the channel already exists in the list
+      const channelExists = channels.some(c => c.id === dmChannel.id);
+      
+      if (!channelExists) {
+        setChannels(prevChannels => [...prevChannels, dmChannel]);
+      }
+      
+      // Select the DM channel
+      setSelectedChannel(dmChannel);
+      fetchChannelMessages(dmChannel.id);
+      
+      if (isMobile) {
+        setMobileOpen(false);
+      }
+    } catch (error) {
+      console.error('Error creating/getting DM channel:', error);
+      setError('Failed to open direct message. Please try again.');
+    }
+  };
+  
+  // Handle sending a message
+  const handleSendMessage = (content, replyToId = null) => {
+    if (!selectedChannel) return;
+    
+    const messageData = {
+      content: content,
+      channel: selectedChannel.id,
+      reply_to: replyToId
+    };
+    
+    if (selectedChannel.is_direct_message) {
+      // Get the other user's ID for direct messages
+      const otherUserId = interactedUsers.find(
+        user => user.channel_id === selectedChannel.id
+      )?.id;
+      
+      if (otherUserId) {
+        sendWebSocketMessage({
+          message_type: 'direct_message',
+          recipient_id: otherUserId,
+          content: content,
+          team_id: teamId,
+          reply_to: replyToId,
+          channel_id: selectedChannel.id
+        });
+      }
+    } else {
+      sendWebSocketMessage({
+        message_type: 'channel_message',
+        channel: selectedChannel.id,
+        content: content,
+        reply_to: replyToId
+      });
+    }
+  };
+  
+  // Handle deleting a message
+  const handleDeleteMessage = (messageId) => {
+    sendWebSocketMessage({
+      message_type: 'delete_message',
+      message_id: messageId,
+      type: selectedChannel?.is_direct_message ? 'direct' : 'channel'
+    });
+  };
+  
+  // Handle adding a reaction
+  const handleReaction = (messageId, reaction) => {
+    sendWebSocketMessage({
+      message_type: 'reaction',
+      message_id: messageId,
+      reaction: reaction
+    });
+  };
+  
+  // Toggle drawer for mobile view
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+  
+  return (
+    <Box sx={{ display: 'flex', height: '100vh' }}>
+      <CssBaseline />
+      
+      <Sidebar 
+        channels={channels}
+        teamMembers={teamMembers}
+        interactedUsers={interactedUsers}
+        selectedChannel={selectedChannel}
+        onChannelSelect={handleChannelSelect}
+        onCreateChannel={handleCreateChannel}
+        onCreateOrGetDMChannel={handleCreateOrGetDMChannel}
+        mobileOpen={mobileOpen}
+        handleDrawerToggle={handleDrawerToggle}
+        isMobile={isMobile}
+        teamId={teamId}
+      />
+      
+      <MessageWindow 
+        messages={messages}
+        selectedChannel={selectedChannel}
+        teamMembers={teamMembers}
+        onSendMessage={handleSendMessage}
+        onDeleteMessage={handleDeleteMessage}
+        onReact={handleReaction}
+        handleDrawerToggle={handleDrawerToggle}
+        loading={loading}
+        error={error}
+      />
+    </Box>
   );
-}
+};
 
 export default ChatInterface;
