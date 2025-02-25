@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, CssBaseline, useMediaQuery, useTheme } from '@mui/material';
+import { Box, CssBaseline, useMediaQuery, useTheme, Grid, Button } from '@mui/material';
 import Sidebar from './Sidebar';
 import MessageWindow from './MessageWindow';
 import axios from 'axios';
@@ -16,8 +16,8 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   
   // State variables
   const [channels, setChannels] = useState([]);
-  const [selectedChannel, setSelectedChannel] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [activeChannels, setActiveChannels] = useState([]); // Array of active channels (max 3)
+  const [messagesMap, setMessagesMap] = useState({}); // Map of channel id to messages
   const [teamMembers, setTeamMembers] = useState([]);
   const [interactedUsers, setInteractedUsers] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -28,7 +28,6 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   // Connect to WebSocket
   useEffect(() => {
     // Get token from local storage
-
     const connectWebSocket = () => {
       const token = localStorage.getItem('token');
       
@@ -66,7 +65,6 @@ const ChatInterface = ({ setIsAuthenticated }) => {
             connectWebSocket();
           }
         }, 3000)
-
       };
       
       socketRef.current.onerror = (err) => {
@@ -78,8 +76,8 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
       };
-      
     }
+    
     connectWebSocket();
 
     return () => {
@@ -91,7 +89,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
       }
     };
     
-  }, [teamId, navigate, setIsAuthenticated, messages]);
+  }, [teamId, navigate, setIsAuthenticated, messagesMap]);
   
   // Fetch initial data when WebSocket is connected
   const fetchInitialData = () => {
@@ -129,9 +127,9 @@ const ChatInterface = ({ setIsAuthenticated }) => {
       setChannels(response.data);
       
       // Select the first channel by default if no channel is selected
-      if (response.data.length > 0 && !selectedChannel) {
+      if (response.data.length > 0 && activeChannels.length === 0) {
         const defaultChannel = response.data.find(c => !c.is_direct_message) || response.data[0];
-        setSelectedChannel(defaultChannel);
+        setActiveChannels([defaultChannel]);
         fetchChannelMessages(defaultChannel.id);
       }
     } catch (error) {
@@ -142,11 +140,24 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   
   // Fetch messages for a channel
   const fetchChannelMessages = (channelId) => {
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel) return;
+    
     sendWebSocketMessage({
-      message_type: selectedChannel?.is_direct_message ? 'get_direct_messages' : 'get_channel_messages',
+      message_type: channel.is_direct_message ? 'get_direct_messages' : 'get_channel_messages',
       channel_id: channelId
     });
   };
+
+  useEffect(() => {
+    if (activeChannels.length > 0) {
+      activeChannels.forEach((channel) => {
+        if (!messagesMap[channel.id]) {
+          fetchChannelMessages(channel.id);
+        }
+      });
+    }
+  }, [activeChannels, fetchChannelMessages, messagesMap]);
   
   // Send message through WebSocket
   const sendWebSocketMessage = (message) => {
@@ -165,7 +176,11 @@ const ChatInterface = ({ setIsAuthenticated }) => {
     switch (data.type) {
       case 'channel_messages':
       case 'direct_messages':
-        setMessages(data.messages);
+        // Update messages for specific channel
+        setMessagesMap(prevMap => ({
+          ...prevMap,
+          [data.channel_id]: data.messages
+        }));
         break;
         
       case 'team_members':
@@ -177,36 +192,76 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         break;
         
       case 'message_deleted':
-        setMessages(prevMessages => 
-          prevMessages.filter(msg => msg.id !== data.message_id)
-        );
+        // Update messages for all active channels
+        setMessagesMap(prevMap => {
+          const updatedMap = { ...prevMap };
+          
+          Object.keys(updatedMap).forEach(channelId => {
+            updatedMap[channelId] = updatedMap[channelId].filter(
+              msg => msg.id !== data.message_id
+            );
+          });
+          
+          return updatedMap;
+        });
         break;
         
       case 'reaction_update':
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === data.message_id ? { ...msg, reactions: data.reactions } : msg
-          )
-        );
+        // Update reactions for all active channels
+        setMessagesMap(prevMap => {
+          const updatedMap = { ...prevMap };
+          
+          Object.keys(updatedMap).forEach(channelId => {
+            updatedMap[channelId] = updatedMap[channelId].map(msg => 
+              msg.id === data.message_id ? { ...msg, reactions: data.reactions } : msg
+            );
+          });
+          
+          return updatedMap;
+        });
         break;
         
       default:
         // Handle new message
         if (data.type === 'direct' || data.type === 'channels') {
           console.log('New message:', data);
-          if (selectedChannel && data.channel_id === selectedChannel.id) {
-            setMessages(prevMessages => [...prevMessages, data]);
-            console.log('Updated Messages : ', messages)
+          console.log('Active Channels : ', activeChannels);
+          // Add the new message to the appropriate channel
+          if (activeChannels.some(channel => channel.id === data.channel_id)) {
+            setMessagesMap(prevMap => {
+                const channelId = data.channel_id;
+                const updatedMessages = [...(prevMap[channelId] || []), data];
+                return {
+                    ...prevMap,
+                    [channelId]: updatedMessages
+                };
+            });
+            console.log('Updated Messages for channel', data.channel_id);
           }
         }
         break;
     }
   };
   
-  // Handle channel selection
-  const handleChannelSelect = (channel) => {
-    setSelectedChannel(channel);
-    fetchChannelMessages(channel.id);
+  // Handle toggling a channel in active channels
+  const handleChannelToggle = (channel) => {
+    // Check if channel is already active
+    const isActive = activeChannels.some(c => c.id === channel.id);
+    
+    if (isActive) {
+      // Remove from active channels
+      setActiveChannels(activeChannels.filter(c => c.id !== channel.id));
+    } else {
+      // Add to active channels if less than 3
+      if (activeChannels.length < 3) {
+        setActiveChannels([...activeChannels, channel]);
+        // Fetch messages if not already loaded
+        if (!messagesMap[channel.id]) {
+          fetchChannelMessages(channel.id);
+        }
+      }
+    }
+    
     if (isMobile) {
       setMobileOpen(false);
     }
@@ -242,9 +297,11 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         setChannels(prevChannels => [...prevChannels, dmChannel]);
       }
       
-      // Select the DM channel
-      setSelectedChannel(dmChannel);
-      fetchChannelMessages(dmChannel.id);
+      // Add to active channels if less than 3
+      if (activeChannels.length < 3) {
+        setActiveChannels(prev => [...prev.filter(c => c.id !== dmChannel.id), dmChannel]);
+        fetchChannelMessages(dmChannel.id);
+      }
       
       if (isMobile) {
         setMobileOpen(false);
@@ -256,19 +313,14 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   };
   
   // Handle sending a message
-  const handleSendMessage = (content, replyToId = null) => {
-    if (!selectedChannel) return;
+  const handleSendMessage = (channelId, content, replyToId = null) => {
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel) return;
     
-    const messageData = {
-      content: content,
-      channel: selectedChannel.id,
-      reply_to: replyToId
-    };
-    
-    if (selectedChannel.is_direct_message) {
+    if (channel.is_direct_message) {
       // Get the other user's ID for direct messages
       const otherUserId = interactedUsers.find(
-        user => user.channel_id === selectedChannel.id
+        user => user.channel_id === channel.id
       )?.id;
       
       if (otherUserId) {
@@ -278,13 +330,13 @@ const ChatInterface = ({ setIsAuthenticated }) => {
           content: content,
           team_id: teamId,
           reply_to: replyToId,
-          channel_id: selectedChannel.id
+          channel_id: channel.id
         });
       }
     } else {
       sendWebSocketMessage({
         message_type: 'channel_message',
-        channel: selectedChannel.id,
+        channel: channel.id,
         content: content,
         reply_to: replyToId
       });
@@ -292,16 +344,19 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   };
   
   // Handle deleting a message
-  const handleDeleteMessage = (messageId) => {
+  const handleDeleteMessage = (channelId, messageId) => {
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel) return;
+    
     sendWebSocketMessage({
       message_type: 'delete_message',
       message_id: messageId,
-      type: selectedChannel?.is_direct_message ? 'direct' : 'channel'
+      type: channel.is_direct_message ? 'direct' : 'channel'
     });
   };
   
   // Handle adding a reaction
-  const handleReaction = (messageId, reaction) => {
+  const handleReaction = (channelId, messageId, reaction) => {
     sendWebSocketMessage({
       message_type: 'reaction',
       message_id: messageId,
@@ -314,6 +369,20 @@ const ChatInterface = ({ setIsAuthenticated }) => {
     setMobileOpen(!mobileOpen);
   };
   
+  // Calculate grid sizing based on active channel count
+  const getGridProps = (numChannels) => {
+    switch (numChannels) {
+      case 1:
+        return { xs: 12 };
+      case 2:
+        return { xs: 12, md: 6 };
+      case 3:
+        return { xs: 12, md: 4 };
+      default:
+        return { xs: 12 };
+    }
+  };
+  
   return (
     <Box sx={{ display: 'flex', height: '100vh' }}>
       <CssBaseline />
@@ -322,8 +391,8 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         channels={channels}
         teamMembers={teamMembers}
         interactedUsers={interactedUsers}
-        selectedChannel={selectedChannel}
-        onChannelSelect={handleChannelSelect}
+        activeChannels={activeChannels}
+        onChannelToggle={handleChannelToggle}
         onCreateChannel={handleCreateChannel}
         onCreateOrGetDMChannel={handleCreateOrGetDMChannel}
         mobileOpen={mobileOpen}
@@ -332,17 +401,69 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         teamId={teamId}
       />
       
-      <MessageWindow 
-        messages={messages}
-        selectedChannel={selectedChannel}
-        teamMembers={teamMembers}
-        onSendMessage={handleSendMessage}
-        onDeleteMessage={handleDeleteMessage}
-        onReact={handleReaction}
-        handleDrawerToggle={handleDrawerToggle}
-        loading={loading}
-        error={error}
-      />
+      <Box 
+        component="main" 
+        sx={{ 
+          flexGrow: 1, 
+          p: 1,
+          height: '100vh',
+          overflow: 'hidden',
+          bgcolor: 'background.default'
+        }}
+      >
+        {activeChannels.length === 0 ? (
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: '100%',
+            flexDirection: 'column',
+            gap: 2
+          }}>
+            <Box sx={{ textAlign: 'center' }}>
+              No channels selected. Choose up to 3 channels from the sidebar.
+            </Box>
+            <Button 
+              variant="outlined" 
+              onClick={handleDrawerToggle}
+              sx={{ display: { md: 'none' } }}
+            >
+              Open Sidebar
+            </Button>
+          </Box>
+        ) : (
+          <Grid container spacing={1} sx={{ height: '100%' }}>
+            {activeChannels.map((channel) => (
+              <Grid 
+                item 
+                key={channel.id} 
+                {...getGridProps(activeChannels.length)}
+                sx={{ height: '100%' }}
+              >
+                <MessageWindow 
+                  messages={messagesMap[channel.id] || []}
+                  selectedChannel={channel}
+                  teamMembers={teamMembers}
+                  onSendMessage={(content, replyToId) => 
+                    handleSendMessage(channel.id, content, replyToId)
+                  }
+                  onDeleteMessage={(messageId) => 
+                    handleDeleteMessage(channel.id, messageId)
+                  }
+                  onReact={(messageId, reaction) => 
+                    handleReaction(channel.id, messageId, reaction)
+                  }
+                  handleDrawerToggle={handleDrawerToggle}
+                  loading={loading && !messagesMap[channel.id]}
+                  error={error}
+                  onClose={() => handleChannelToggle(channel)}
+                  isMultiWindow={activeChannels.length > 1}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
     </Box>
   );
 };

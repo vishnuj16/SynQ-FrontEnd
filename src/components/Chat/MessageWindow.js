@@ -54,7 +54,9 @@ const MessageWindow = ({
     onReact,
     handleDrawerToggle,
     loading,
-    error
+    error,
+    onClose,
+    isMultiWindow
 }) => {
     // State variables
     const [messageText, setMessageText] = useState('');
@@ -207,7 +209,8 @@ const MessageWindow = ({
                 height: '100%',
                 bgcolor: 'background.paper',
                 borderRadius: 1,
-                overflow: 'hidden'
+                overflow: 'hidden',
+                border: isMultiWindow ? '1px solid rgba(0, 0, 0, 0.12)' : 'none'
             }}
         >
             {/* Channel header */}
@@ -220,49 +223,65 @@ const MessageWindow = ({
                     backgroundColor: 'background.paper'
                 }}
             >
-                <Toolbar sx={{ minHeight: 64 }}>
-                    <IconButton
-                        color="primary"
-                        edge="start"
-                        onClick={handleDrawerToggle}
-                        sx={{ mr: 2, display: { md: 'none' } }}
-                    >
-                        <MenuIcon />
-                    </IconButton>
+                <Toolbar sx={{ minHeight: 64, justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <IconButton
+                            color="primary"
+                            edge="start"
+                            onClick={handleDrawerToggle}
+                            sx={{ mr: 2, display: { md: 'none' } }}
+                        >
+                            <MenuIcon />
+                        </IconButton>
 
-                    {selectedChannel && (
-                        <>
-                            {selectedChannel.is_direct_message ? (
-                                <Avatar sx={{ 
-                                    bgcolor: 'primary.light', 
-                                    color: 'primary.contrastText',
-                                    width: 38, 
-                                    height: 38,
-                                    mr: 2
-                                }}>
-                                    <PersonIcon />
-                                </Avatar>
-                            ) : (
-                                <Avatar sx={{ 
-                                    bgcolor: 'secondary.light', 
-                                    color: 'secondary.contrastText',
-                                    width: 38, 
-                                    height: 38,
-                                    mr: 2
-                                }}>
-                                    <TagIcon />
-                                </Avatar>
-                            )}
+                        {selectedChannel && (
+                            <>
+                                {selectedChannel.is_direct_message ? (
+                                    <Avatar sx={{ 
+                                        bgcolor: 'primary.light', 
+                                        color: 'primary.contrastText',
+                                        width: 38, 
+                                        height: 38,
+                                        mr: 2
+                                    }}>
+                                        <PersonIcon />
+                                    </Avatar>
+                                ) : (
+                                    <Avatar sx={{ 
+                                        bgcolor: 'secondary.light', 
+                                        color: 'secondary.contrastText',
+                                        width: 38, 
+                                        height: 38,
+                                        mr: 2
+                                    }}>
+                                        <TagIcon />
+                                    </Avatar>
+                                )}
 
-                            <Box>
-                                <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600 }}>
-                                    {selectedChannel.name}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                    {selectedChannel.is_direct_message ? 'Direct Message' : 'Channel'}
-                                </Typography>
-                            </Box>
-                        </>
+                                <Box>
+                                    <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600 }}>
+                                    {selectedChannel.is_direct_message
+            ? teamMembers.find(member => member.username !== username && selectedChannel.members.find(user => user.id === member.id))?.username || selectedChannel.name
+            : selectedChannel.name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {selectedChannel.is_direct_message ? 'Direct Message' : 'Channel'}
+                                    </Typography>
+                                </Box>
+                            </>
+                        )}
+                    </Box>
+
+                    {/* Close button for multi-window mode */}
+                    {isMultiWindow && onClose && (
+                        <IconButton 
+                            onClick={onClose}
+                            size="small"
+                            color="inherit"
+                            aria-label="close window"
+                        >
+                            <CloseIcon />
+                        </IconButton>
                     )}
                 </Toolbar>
             </AppBar>
@@ -294,7 +313,7 @@ const MessageWindow = ({
                         </Typography>
                     </Box>
                 ) : (
-                    messages.map((message, index) => {
+                    messages && messages.map((message, index) => {
                         const isOwnMessage = message.sender === username; // Compare with username
                         const showSender = index === 0 || messages[index - 1].sender !== message.sender;
                         const showReply = !!message.reply_to;
@@ -355,7 +374,7 @@ const MessageWindow = ({
                                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                 <Typography 
-                                                    variant="caption" 
+                                                    variant="body2" 
                                                     color='text.primary' 
                                                     sx={{
                                                         display: 'block',
@@ -370,35 +389,20 @@ const MessageWindow = ({
                                                     alignItems: 'center',
                                                     flexShrink: 0
                                                 }}>
-                                                    <Typography
-                                                        variant="caption"
-                                                        sx={{
-                                                            display: 'block',
-                                                            opacity: 0.8,
-                                                            fontSize: '0.7rem'
-                                                        }}
+                                                    <IconButton
+                                                        aria-label="message options"
+                                                        onClick={(event) => handleMessageOptionsClick(event, message)}
+                                                        size="small"
                                                     >
-                                                        {formatTimestamp(message.timestamp)}
-                                                    </Typography>
-                                                    
-                                                    {/* More button inline with timestamp */}
-                                                    <Tooltip title="More options">
-                                                        <IconButton
-                                                            size="small"
-                                                            onClick={(event) => handleMessageOptionsClick(event, message)}
-                                                            sx={{ 
-                                                                ml: 0.5, 
-                                                                opacity: 0.6,
-                                                                '&:hover': { opacity: 1 }
-                                                            }}
-                                                        >
-                                                            <MoreHorizIcon fontSize="small" />
-                                                        </IconButton>
-                                                    </Tooltip>
+                                                        <MoreVertIcon fontSize="small" />
+                                                    </IconButton>
                                                 </Box>
                                             </Box>
-                                            {renderReactions(message.reactions, message.id)}
+                                            <Typography variant="caption" color="text.secondary" sx={{ textAlign: isOwnMessage ? 'right' : 'left' }}>
+                                                {formatTimestamp(message.timestamp)}
+                                            </Typography>
                                         </Box>
+                                        {renderReactions(message.reactions, message.id)}
                                     </CardContent>
                                 </Card>
                             </Box>
@@ -408,146 +412,99 @@ const MessageWindow = ({
                 <div ref={messagesEndRef} />
             </Box>
 
-            {/* Message input area with reply preview above */}
-            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            {/* Message input area */}
+            <Paper
+                component="form"
+                onSubmit={handleSendMessage}
+                sx={{
+                    p: '8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    borderTop: '1px solid rgba(0, 0, 0, 0.12)',
+                    backgroundColor: 'background.default'
+                }}
+            >
                 {replyTo && (
-                    <Paper
-                        elevation={0}
-                        sx={{
-                            p: 1.5,
-                            mx: 2,
-                            mt: 1,
-                            mb: 0,
-                            bgcolor: 'action.hover',
-                            borderTopLeftRadius: 8,
-                            borderTopRightRadius: 8,
-                            borderBottomLeftRadius: 0,
-                            borderBottomRightRadius: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            borderBottom: 'none',
-                            borderLeft: '1px solid rgba(0, 0, 0, 0.12)',
-                            borderRight: '1px solid rgba(0, 0, 0, 0.12)',
-                            borderTop: '1px solid rgba(0, 0, 0, 0.12)'
-                        }}
-                    >
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <ReplyIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
-                            <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: '80%' }}>
-                                <Typography component="span" fontWeight="medium" color="text.primary">
-                                    {replyTo.sender}:
-                                </Typography>{' '}
-                                {replyTo.content}
-                            </Typography>
-                        </Box>
-                        <IconButton size="small" onClick={handleCancelReply} edge="end">
-                            <CloseIcon fontSize="small" />
-                        </IconButton>
+                    <Paper elevation={1} sx={{ p: 1, mr: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                            Replying to {replyTo.sender}: {replyTo.content}
+                            <IconButton size="small" onClick={handleCancelReply} sx={{ ml: 1 }}>
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Typography>
                     </Paper>
                 )}
-                
-                <Paper
-                    component="form"
-                    onSubmit={handleSendMessage}
-                    sx={{
-                        p: '8px 16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        borderTop: replyTo ? 'none' : '1px solid rgba(0, 0, 0, 0.12)',
-                        mx: replyTo ? 2 : 0,
-                        borderTopLeftRadius: replyTo ? 0 : 4,
-                        borderTopRightRadius: replyTo ? 0 : 4,
-                        borderLeft: replyTo ? '1px solid rgba(0, 0, 0, 0.12)' : 'none',
-                        borderRight: replyTo ? '1px solid rgba(0, 0, 0, 0.12)' : 'none',
-                        borderBottom: replyTo ? '1px solid rgba(0, 0, 0, 0.12)' : 'none',
-                        mb: replyTo ? 1 : 0
+                <TextField
+                    fullWidth
+                    placeholder="Send a message..."
+                    variant="outlined"
+                    size="small"
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    inputRef={messageInputRef}
+                    InputProps={{
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton type="submit" color="primary" aria-label="send">
+                                    <SendIcon />
+                                </IconButton>
+                            </InputAdornment>
+                        ),
                     }}
-                >
-                    <TextField
-                        inputRef={messageInputRef}
-                        fullWidth
-                        placeholder="Send a message..."
-                        variant="outlined"
-                        size="small"
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        sx={{ flex: 1, mr: 1 }}
-                        InputProps={{
-                            endAdornment: (
-                                <InputAdornment position="end">
-                                    <IconButton onClick={(event) => {
-                                        setEmojiTargetMessage(null);
-                                        setEmojiPickerOpen(true);
-                                    }}>
-                                        <EmojiIcon />
-                                    </IconButton>
-                                </InputAdornment>
-                            )
-                        }}
-                    />
-                    <IconButton type="submit" color="primary" aria-label="send">
-                        <SendIcon />
-                    </IconButton>
-                </Paper>
-            </Box>
-            
-            {/* Dropdown Menu for Message Options */}
+                    sx={{ borderRadius: 2 }}
+                />
+            </Paper>
+
+            {/* Context Menu */}
             <Menu
-                id="message-options-menu"
+                id="message-menu"
                 anchorEl={anchorEl}
                 open={Boolean(anchorEl)}
                 onClose={handleContextMenuClose}
-                anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'right',
-                }}
-                transformOrigin={{
-                    vertical: 'top',
-                    horizontal: 'right',
+                MenuListProps={{
+                    'aria-labelledby': 'basic-button',
                 }}
             >
                 <MenuItem onClick={handleReplyClick}>
                     <ListItemIcon>
                         <ReplyIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Reply</ListItemText>
+                    Reply
                 </MenuItem>
                 <MenuItem onClick={handleEmojiMenuOpen}>
                     <ListItemIcon>
                         <EmojiIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Add reaction</ListItemText>
+                    React with Emoji
                 </MenuItem>
-                {selectedMessage && selectedMessage.sender === username && (
+                {selectedMessage?.sender === username && (
                     <MenuItem onClick={handleDeleteMessage}>
                         <ListItemIcon>
                             <DeleteIcon fontSize="small" />
                         </ListItemIcon>
-                        <ListItemText>Delete</ListItemText>
+                        Delete
                     </MenuItem>
                 )}
             </Menu>
-            
+
             {/* Emoji Picker Modal */}
             <Modal
                 open={emojiPickerOpen}
                 onClose={() => setEmojiPickerOpen(false)}
-                aria-labelledby="emoji-picker"
-                aria-describedby="emoji-picker-description"
+                aria-labelledby="emoji-picker-modal"
+                aria-describedby="emoji-picker-modal-description"
             >
-                <Box
-                    sx={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        bgcolor: 'background.paper',
-                        border: '2px solid #000',
-                        boxShadow: 24,
-                        p: 4,
-                    }}
-                >
+                <Box sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: 400,
+                    bgcolor: 'background.paper',
+                    border: '2px solid #000',
+                    boxShadow: 24,
+                    p: 4,
+                }}>
                     <Picker data={data} onEmojiSelect={handleEmojiSelect} />
                 </Box>
             </Modal>
@@ -555,4 +512,4 @@ const MessageWindow = ({
     );
 };
 
-export default MessageWindow
+export default MessageWindow;

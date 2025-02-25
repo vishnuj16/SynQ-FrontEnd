@@ -39,7 +39,7 @@ import {
   AccountCircle as AccountCircleIcon,
   Message as MessageIcon,
   Chat,
-  Settings as SettingsIcon, // Import Settings icon
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -47,42 +47,12 @@ import { motion } from 'framer-motion';
 // Drawer width for desktop view
 const drawerWidth = 280;
 
-// const AnimatedLogo = () => (
-//   <motion.div
-//     initial={{ scale: 0.5, opacity: 0 }}
-//     animate={{ scale: 1, opacity: 1 }}
-//     transition={{ duration: 0.5 }}
-//   >
-//     <Box sx={{
-//       display: 'flex',
-//       alignItems: 'center',
-//       justifyContent: 'center',
-//       gap: 2,
-//       mb: 3
-//     }}>
-//       <Chat sx={{ fontSize: 36, color: 'primary.main' }} />
-//       <Typography
-//         variant="h4"
-//         component="span"
-//         fontWeight="bold"
-//         sx={{
-//           background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-//           WebkitBackgroundClip: 'text',
-//           WebkitTextFillColor: 'transparent'
-//         }}
-//       >
-//         SynQ
-//       </Typography>
-//     </Box>
-//   </motion.div>
-// );
-
 const Sidebar = ({
   channels,
   teamMembers,
   interactedUsers,
-  selectedChannel,
-  onChannelSelect,
+  activeChannels, // Changed from selectedChannel
+  onChannelToggle, // Changed from onChannelSelect
   onCreateChannel,
   onCreateOrGetDMChannel,
   mobileOpen,
@@ -126,12 +96,14 @@ const Sidebar = ({
   // Handle logout
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('username');
     navigate('/login');
   };
 
   // Handle team selection navigation
   const handleTeamSelection = () => {
-    navigate('/teams'); // Replace with your actual route
+    navigate('/teams');
     handleSettingsMenuClose();
   };
 
@@ -176,6 +148,14 @@ const Sidebar = ({
 
   const filteredGroupChannels = filterItems(groupChannels, (channel) => channel.name);
   const filteredDmChannels = filterItems(dmChannels, (channel) => getDMChannelName(channel));
+
+  // Check if a channel is active
+  const isChannelActive = (channelId) => {
+    return activeChannels.some(channel => channel.id === channelId);
+  };
+
+  // Count active channels
+  const activeChannelCount = activeChannels.length;
 
   // Settings menu open
   const handleSettingsMenuOpen = (event) => {
@@ -239,6 +219,13 @@ const Sidebar = ({
         />
       </Box>
 
+      {/* Active Channel Count */}
+      <Box sx={{ px: 2, mb: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          Active channels: {activeChannelCount}/3
+        </Typography>
+      </Box>
+
       <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1 }}>
         {/* Channels Section */}
         <ListItem
@@ -266,8 +253,8 @@ const Sidebar = ({
               filteredGroupChannels.map((channel) => (
                 <ListItem key={channel.id} disablePadding>
                   <ListItemButton
-                    selected={selectedChannel?.id === channel.id}
-                    onClick={() => onChannelSelect(channel)}
+                    selected={isChannelActive(channel.id)}
+                    onClick={() => onChannelToggle(channel)}
                     sx={{
                       pl: 3,
                       borderRadius: 1,
@@ -279,6 +266,7 @@ const Sidebar = ({
                         },
                       },
                     }}
+                    disabled={activeChannelCount >= 3 && !isChannelActive(channel.id)}
                   >
                     <ListItemIcon sx={{ minWidth: 36 }}>
                       {channel.channel_type === 'private' ? (
@@ -331,7 +319,7 @@ const Sidebar = ({
               size="small"
               onClick={handleDmMenuOpen}
               sx={{ mr: 1 }}
-              disabled={getAvailableDMUsers().length === 0}
+              disabled={getAvailableDMUsers().length === 0 || activeChannelCount >= 3}
               color="primary"
             >
               <MessageIcon fontSize="small" />
@@ -376,8 +364,8 @@ const Sidebar = ({
               filteredDmChannels.map((channel) => (
                 <ListItem key={channel.id} disablePadding>
                   <ListItemButton
-                    selected={selectedChannel?.id === channel.id}
-                    onClick={() => onChannelSelect(channel)}
+                    selected={isChannelActive(channel.id)}
+                    onClick={() => onChannelToggle(channel)}
                     sx={{
                       pl: 3,
                       borderRadius: 1,
@@ -389,6 +377,7 @@ const Sidebar = ({
                         },
                       },
                     }}
+                    disabled={activeChannelCount >= 3 && !isChannelActive(channel.id)}
                   >
                     <ListItemIcon sx={{ minWidth: 36 }}>
                       <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem', bgcolor: 'secondary.light' }}>
@@ -433,7 +422,7 @@ const Sidebar = ({
             textTransform: 'none',
             py: 1,
           }}
-          startIcon={<SettingsIcon />} // Use Settings icon here
+          startIcon={<SettingsIcon />}
         >
           Settings
         </Button>
