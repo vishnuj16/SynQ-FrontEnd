@@ -24,6 +24,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const reconnectTimeoutRef = useRef(null);
+  const [selectedChannelsForForward, setSelectedChannelsForForward] = useState([]);
   
   // Connect to WebSocket
   useEffect(() => {
@@ -157,7 +158,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         }
       });
     }
-  }, [activeChannels, fetchChannelMessages, messagesMap]);
+  }, [activeChannels, fetchChannelMessages, messagesMap, selectedChannelsForForward]);
   
   // Send message through WebSocket
   const sendWebSocketMessage = (message) => {
@@ -190,7 +191,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
       case 'interacted_users':
         setInteractedUsers(data.users);
         break;
-        
+      
       case 'message_deleted':
         // Update messages for all active channels
         setMessagesMap(prevMap => {
@@ -220,6 +221,35 @@ const ChatInterface = ({ setIsAuthenticated }) => {
           return updatedMap;
         });
         break;
+
+      case 'message_pinned':
+        // Update messages for all active channels
+        const message_id = data.message_id;
+        const channel_id = data.channel_id;
+        
+        setMessagesMap(prevMap => {
+          const updatedMap = { ...prevMap };
+          Object.keys(updatedMap).forEach(channelId => {
+            updatedMap[channel_id].find(msg => msg.id === message_id).is_pinned = true;
+          });
+          
+          return updatedMap;
+        });
+        break; 
+      
+      case 'message_unpinned':
+        // Update messages for all active channels
+        const message_id_unpin = data.message_id;
+        const channel_id_unpin = data.channel_id;
+        setMessagesMap(prevMap => {
+          const updatedMap = { ...prevMap };
+          Object.keys(updatedMap).forEach(channelId => {
+            updatedMap[channel_id_unpin].find(msg => msg.id === message_id_unpin).is_pinned = false;
+          });
+          
+          return updatedMap;
+        });
+        break; 
         
       default:
         // Handle new message
@@ -312,8 +342,17 @@ const ChatInterface = ({ setIsAuthenticated }) => {
     }
   };
   
+  const handleForwardMessage = (content) => {
+    sendWebSocketMessage({
+      message_type: 'forward_message',
+      channels: selectedChannelsForForward,
+      content: content
+    })
+  } 
+
   // Handle sending a message
   const handleSendMessage = (channelId, content, replyToId = null) => {
+    console.log("Sending message : ", content, "Channel ID : ", channelId);
     const channel = channels.find(c => c.id === channelId);
     if (!channel) return;
     
@@ -342,6 +381,20 @@ const ChatInterface = ({ setIsAuthenticated }) => {
       });
     }
   };
+
+  const pinMessage = (messageId) => {
+    sendWebSocketMessage({
+      message_type: 'pin_message',
+      message_id: messageId
+    });
+  }
+
+  const unpinMessage = (messageId) => {
+    sendWebSocketMessage({
+      message_type: 'unpin_message',
+      message_id: messageId
+    });
+  }
   
   // Handle deleting a message
   const handleDeleteMessage = (channelId, messageId) => {
@@ -447,6 +500,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
                   onSendMessage={(content, replyToId) => 
                     handleSendMessage(channel.id, content, replyToId)
                   }
+                  forwardMessage={handleForwardMessage}
                   onDeleteMessage={(messageId) => 
                     handleDeleteMessage(channel.id, messageId)
                   }
@@ -458,6 +512,11 @@ const ChatInterface = ({ setIsAuthenticated }) => {
                   error={error}
                   onClose={() => handleChannelToggle(channel)}
                   isMultiWindow={activeChannels.length > 1}
+                  channels={channels}
+                  setSelectedChannelsForForward={setSelectedChannelsForForward}
+                  selectedChannelsForForward={selectedChannelsForForward}
+                  pinMessage={pinMessage}
+                  unpinMessage={unpinMessage}
                 />
               </Grid>
             ))}

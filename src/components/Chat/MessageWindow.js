@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
+    Button, 
     Box,
     Typography,
-    TextField,
     IconButton,
     Paper,
     Toolbar,
@@ -11,22 +11,15 @@ import {
     Menu,
     Modal,
     MenuItem,
-    Stack,
-    Tooltip,
     CircularProgress,
     Alert,
-    InputAdornment,
-    Card,
-    CardContent,
-    Chip,
-    Divider,
     List,
     ListItemIcon,
-    ListItemAvatar,
-    ListItemText
+    ListItem,
+    ListItemText,
+    Checkbox
 } from '@mui/material';
 import {
-    Send as SendIcon,
     Delete as DeleteIcon,
     MoreVert as MoreVertIcon,
     Reply as ReplyIcon,
@@ -34,14 +27,18 @@ import {
     Person as PersonIcon,
     Menu as MenuIcon,
     EmojiEmotions as EmojiIcon,
-    MoreHoriz as MoreHorizIcon,
     Close as CloseIcon,
-    ChatBubble as ChatBubbleIcon
+    ContentCopy as CopyIcon,
+    Forward as ForwardIcon,
+    PushPin as PinIcon
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
+import MessageBubble from './MessageBubble';
+import MessageInput from './MessageInput';
+
 // Add dayjs plugins
 dayjs.extend(relativeTime);
 
@@ -50,31 +47,40 @@ const MessageWindow = ({
     selectedChannel,
     teamMembers,
     onSendMessage,
+    forwardMessage,
     onDeleteMessage,
     onReact,
     handleDrawerToggle,
     loading,
     error,
     onClose,
-    isMultiWindow
+    isMultiWindow,
+    channels,
+    setSelectedChannelsForForward,
+    selectedChannelsForForward,
+    pinMessage,
+    unpinMessage
 }) => {
     // State variables
-    const [messageText, setMessageText] = useState('');
     const [replyTo, setReplyTo] = useState(null);
     const [anchorEl, setAnchorEl] = useState(null);
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-    const [emojiAnchorEl, setEmojiAnchorEl] = useState(null);
     const [emojiTargetMessage, setEmojiTargetMessage] = useState(null);
     const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-
+    
     // Refs
     const messagesEndRef = useRef(null);
     const messageContainerRef = useRef(null);
-    const messageInputRef = useRef(null);
+
+    // Forwarding states
+    const [forwardModalOpen, setForwardModalOpen] = useState(false);
+    const [messageToForward, setMessageToForward] = useState(null);
 
     // Get username from local storage
     const username = localStorage.getItem('username');
+
+    const pinnedMessage = messages.find((message) => message.is_pinned);
 
     // Scroll to bottom when messages change
     useEffect(() => {
@@ -82,13 +88,6 @@ const MessageWindow = ({
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [messages, shouldAutoScroll]);
-
-    // Focus input field when reply is set
-    useEffect(() => {
-        if (replyTo && messageInputRef.current) {
-            messageInputRef.current.focus();
-        }
-    }, [replyTo]);
 
     const handleScroll = () => {
         if (messageContainerRef.current) {
@@ -98,16 +97,6 @@ const MessageWindow = ({
         }
     };
     
-    // Handle send message
-    const handleSendMessage = (e) => {
-        e.preventDefault();
-        if (messageText.trim()) {
-            onSendMessage(messageText, replyTo?.id);
-            setMessageText('');
-            setReplyTo(null);
-        }
-    };
-
     // Handle message context menu
     const handleMessageOptionsClick = (event, message) => {
         setAnchorEl(event.currentTarget);
@@ -150,7 +139,7 @@ const MessageWindow = ({
         }
     };
 
-    // Handle emoji selection
+    // Handle emoji selection for reactions
     const handleEmojiSelect = (e) => {
         if (emojiTargetMessage) {
             onReact(emojiTargetMessage.id, e.native);
@@ -159,39 +148,65 @@ const MessageWindow = ({
         }
     };
 
-    // Render reactions for a message
-    const renderReactions = (reactions, messageId) => {
-        if (!reactions || Object.keys(reactions).length === 0) return null;
-    
-        // Group reactions by emoji
-        const reactionCounts = {};
-        for (const emoji of Object.values(reactions)) { // Iterate through emoji values directly
-            reactionCounts[emoji] = (reactionCounts[emoji] || 0) + 1;
+    const handleCopyMessage = () => {
+        if (selectedMessage) {
+            navigator.clipboard.writeText(selectedMessage.content)
+                .then(() => {
+                    console.log('Message copied to clipboard');
+                    handleContextMenuClose();
+                })
+                .catch(err => {
+                    console.error('Failed to copy message: ', err);
+                });
         }
-    
-        return (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                {Object.entries(reactionCounts).map(([emoji, count]) => (
-                    <Chip
-                        key={emoji}
-                        label={`${emoji} ${count}`}
-                        size="small"
-                        sx={{
-                            height: 24,
-                            fontSize: '0.85rem',
-                            bgcolor: 'action.selected',
-                            borderRadius: '12px'
-                        }}
-                        onClick={() => onReact(messageId, emoji)} // Use messageId here
-                    />
-                ))}
-            </Box>
-        );
     };
 
-    // Find user by ID
-    const getUserById = (userId) => {
-        return teamMembers.find(member => member.id === userId) || { username: 'Unknown User' };
+    // Open forward modal
+    const handleForwardClick = () => {
+        if (selectedMessage) {
+            setMessageToForward(selectedMessage);
+            setForwardModalOpen(true);
+            handleContextMenuClose();
+        }
+    };
+
+    // Close forward modal
+    const handleCloseForwardModal = () => {
+        setForwardModalOpen(false);
+        setSelectedChannelsForForward([]);
+        setMessageToForward(null);
+    };
+
+    // Toggle channel selection for forwards
+    const handleChannelSelectForForward = (channelId) => {
+        setSelectedChannelsForForward(prev => {
+            if (prev.includes(channelId)) {
+                return prev.filter(id => id !== channelId);
+            } else {
+                return [...prev, channelId];
+            }
+        });
+    };
+
+    const handlePinUnpinClick = () => {
+        if (selectedMessage) {
+            if (selectedMessage.is_pinned) {
+                unpinMessage(selectedMessage.id);
+            } else {
+                pinMessage(selectedMessage.id);
+            }
+            handleContextMenuClose();
+        }
+    }
+
+    // Forward the message to selected channels
+    const handleForwardMessage = () => {
+        console.log("Handle forward message : ", messageToForward)
+        if (messageToForward) {
+            forwardMessage(messageToForward.content);
+            handleCloseForwardModal();
+            setMessageToForward(null);
+        }
     };
 
     // Format message timestamp
@@ -261,8 +276,8 @@ const MessageWindow = ({
                                 <Box>
                                     <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600 }}>
                                     {selectedChannel.is_direct_message
-            ? teamMembers.find(member => member.username !== username && selectedChannel.members.find(user => user.id === member.id))?.username || selectedChannel.name
-            : selectedChannel.name}
+                                        ? teamMembers.find(member => member.username !== username && selectedChannel.members.find(user => user.id === member.id))?.username || selectedChannel.name
+                                        : selectedChannel.name}
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
                                         {selectedChannel.is_direct_message ? 'Direct Message' : 'Channel'}
@@ -300,6 +315,45 @@ const MessageWindow = ({
                     backgroundColor: 'background.default'
                 }}
             >
+                {pinnedMessage && (
+                    <Paper
+                        elevation={4}
+                        sx={{
+                            p: 0.5,
+                            backgroundColor: '#ffefc1',
+                            borderLeft: '4px solid #ff9800',
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 9,
+                        }}
+                    >
+                        <Typography
+                            variant="body1"
+                            sx={{ fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}
+                        >
+                            📌 Pinned Message
+                            <IconButton
+                                size="small"
+                                sx={{ color: 'text.secondary' }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    unpinMessage(pinnedMessage.id);
+                                }}
+                            >
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Typography>
+                        <Typography variant="body2">
+                            {pinnedMessage.content}
+                        </Typography>
+                        <Typography
+                            variant="caption"
+                            sx={{ display: 'block', mt: 1, color: 'gray' }}
+                        >
+                            {dayjs(pinnedMessage.timestamp).fromNow()}
+                        </Typography>
+                    </Paper>
+                )}
                 {loading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
                         <CircularProgress />
@@ -314,146 +368,37 @@ const MessageWindow = ({
                     </Box>
                 ) : (
                     messages && messages.map((message, index) => {
-                        const isOwnMessage = message.sender === username; // Compare with username
+                        const isOwnMessage = message.sender === username;
                         const showSender = index === 0 || messages[index - 1].sender !== message.sender;
                         const showReply = !!message.reply_to;
+                        const showIfForwarded = message.is_forwarded;
 
                         return (
-                            <Box
+                            <MessageBubble
                                 key={message.id || index}
-                                sx={{
-                                    mb: 2,
-                                    display: 'flex', // Use flexbox to align messages
-                                    flexDirection: 'column',
-                                    alignItems: isOwnMessage ? 'flex-end' : 'flex-start', // Align messages
-                                }}
-                            >
-                                {showReply && (
-                                    <Paper elevation={1} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1, mb: 1, maxWidth: "75%" }}>
-                                        <Typography variant="caption" color="text.secondary">
-                                            <ReplyIcon fontSize="small" sx={{ mr: 0.5 }} />
-                                            {message.replied_message}
-                                        </Typography>
-                                    </Paper>
-                                )}
-                                {showSender && (
-                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.25, ml: isOwnMessage ? 0 : 1, mr: isOwnMessage ? 1 : 0 }}>
-                                        {!isOwnMessage && (
-                                            <Avatar sx={{ width: 24, height: 24, mr: 0.5, bgcolor: 'primary.light', fontSize: '0.75rem' }}>
-                                                {message.sender?.charAt(0).toUpperCase()}
-                                            </Avatar>
-                                        )}
-                                        <Typography
-                                            variant="subtitle2"
-                                            color="text.primary"
-                                            sx={{
-                                                display: 'block',
-                                            }}
-                                        >
-                                            {message.sender}
-                                        </Typography>
-                                        {isOwnMessage && (
-                                            <Avatar sx={{ width: 24, height: 24, ml: 0.5, bgcolor: 'primary.light', fontSize: '0.75rem' }}>
-                                                {message.sender?.charAt(0).toUpperCase()}
-                                            </Avatar>
-                                        )}
-                                    </Box>
-                                )}
-
-                                <Card
-                                    elevation={2}
-                                    sx={{
-                                        backgroundColor: isOwnMessage ? 'blue.100' : 'grey.100', // Blue for own messages
-                                        color: isOwnMessage ? 'black.100' : 'white.100',
-                                        borderRadius: 1,
-                                        maxWidth: '75%',
-                                        wordBreak: 'break-word',
-                                    }}
-                                >
-                                    <CardContent sx={{ py: 1, px: 2, '&:last-child': { pb: 1 } }}>
-                                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <Typography 
-                                                    variant="body2" 
-                                                    color='text.primary' 
-                                                    sx={{
-                                                        display: 'block',
-                                                        mr: 1,
-                                                        flex: 1
-                                                    }}
-                                                >
-                                                    {message.content}
-                                                </Typography>
-                                                <Box sx={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center',
-                                                    flexShrink: 0
-                                                }}>
-                                                    <IconButton
-                                                        aria-label="message options"
-                                                        onClick={(event) => handleMessageOptionsClick(event, message)}
-                                                        size="small"
-                                                    >
-                                                        <MoreVertIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Box>
-                                            </Box>
-                                            <Typography variant="caption" color="text.secondary" sx={{ textAlign: isOwnMessage ? 'right' : 'left' }}>
-                                                {formatTimestamp(message.timestamp)}
-                                            </Typography>
-                                        </Box>
-                                        {renderReactions(message.reactions, message.id)}
-                                    </CardContent>
-                                </Card>
-                            </Box>
+                                message={message}
+                                isOwnMessage={isOwnMessage}
+                                showSender={showSender}
+                                showReply={showReply}
+                                showIfForwarded={showIfForwarded}
+                                formatTimestamp={formatTimestamp}
+                                handleMessageOptionsClick={handleMessageOptionsClick}
+                                onReact={onReact}
+                            />
                         );
                     })
                 )}
                 <div ref={messagesEndRef} />
             </Box>
 
-            {/* Message input area */}
-            <Paper
-                component="form"
-                onSubmit={handleSendMessage}
-                sx={{
-                    p: '8px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    borderTop: '1px solid rgba(0, 0, 0, 0.12)',
-                    backgroundColor: 'background.default'
-                }}
-            >
-                {replyTo && (
-                    <Paper elevation={1} sx={{ p: 1, mr: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                            Replying to {replyTo.sender}: {replyTo.content}
-                            <IconButton size="small" onClick={handleCancelReply} sx={{ ml: 1 }}>
-                                <CloseIcon fontSize="small" />
-                            </IconButton>
-                        </Typography>
-                    </Paper>
-                )}
-                <TextField
-                    fullWidth
-                    placeholder="Send a message..."
-                    variant="outlined"
-                    size="small"
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    inputRef={messageInputRef}
-                    InputProps={{
-                        endAdornment: (
-                            <InputAdornment position="end">
-                                <IconButton type="submit" color="primary" aria-label="send">
-                                    <SendIcon />
-                                </IconButton>
-                            </InputAdornment>
-                        ),
-                    }}
-                    sx={{ borderRadius: 2 }}
-                />
-            </Paper>
+            <MessageInput
+                messageText=""
+                setMessageText={() => {}}
+                replyTo={replyTo}
+                onSendMessage={onSendMessage}
+                handleCancelReply={handleCancelReply}
+                setReplyTo={setReplyTo}
+            />
 
             {/* Context Menu */}
             <Menu
@@ -476,6 +421,26 @@ const MessageWindow = ({
                         <EmojiIcon fontSize="small" />
                     </ListItemIcon>
                     React with Emoji
+                </MenuItem>
+                <MenuItem onClick={handleCopyMessage}>
+                    <ListItemIcon>
+                        <CopyIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Copy Message</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handleForwardClick}>
+                    <ListItemIcon>
+                        <ForwardIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Forward Message</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handlePinUnpinClick}>
+                    <ListItemIcon>
+                        <PinIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>
+                        {selectedMessage?.is_pinned ? "Unpin Message" : "Pin Message"}
+                    </ListItemText>
                 </MenuItem>
                 {selectedMessage?.sender === username && (
                     <MenuItem onClick={handleDeleteMessage}>
@@ -506,6 +471,55 @@ const MessageWindow = ({
                     p: 4,
                 }}>
                     <Picker data={data} onEmojiSelect={handleEmojiSelect} />
+                </Box>
+            </Modal>
+
+            {/* Forward Message Modal */}
+            <Modal
+                open={forwardModalOpen}
+                onClose={handleCloseForwardModal}
+                aria-labelledby="forward-message-modal"
+                aria-describedby="select-channels-to-forward-message"
+            >
+                <Box sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '90%',
+                    maxWidth: 500,
+                    bgcolor: 'background.paper',
+                    border: '2px solid #000',
+                    boxShadow: 24,
+                    p: 4,
+                    borderRadius: 2,
+                }}>
+                    <Typography id="forward-message-modal" variant="h6" component="h2">
+                        Select Channels to Forward Message
+                    </Typography>
+                    <List sx={{ width: '100%', bgcolor: 'background.paper' }}>
+                        {channels.map((channel) => (
+                            <ListItem key={channel.id} onClick={() => handleChannelSelectForForward(channel.id)}>
+                                <ListItemIcon>
+                                    <Checkbox
+                                        edge="start"
+                                        checked={selectedChannelsForForward.includes(channel.id)}
+                                        tabIndex={-1}
+                                        disableRipple
+                                    />
+                                </ListItemIcon>
+                                <ListItemText primary={channel.name} />
+                            </ListItem>
+                        ))}
+                    </List>
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button onClick={handleCloseForwardModal} sx={{ mr: 1 }}>
+                            Cancel
+                        </Button>
+                        <Button variant="contained" color="primary" onClick={handleForwardMessage}>
+                            Forward
+                        </Button>
+                    </Box>
                 </Box>
             </Modal>
         </Box>
