@@ -38,6 +38,7 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
+import PresenceIndicator from './PresenceIndicator';
 
 // Add dayjs plugins
 dayjs.extend(relativeTime);
@@ -59,7 +60,8 @@ const MessageWindow = ({
     setSelectedChannelsForForward,
     selectedChannelsForForward,
     pinMessage,
-    unpinMessage
+    unpinMessage,
+    userPresences
 }) => {
     // State variables
     const [replyTo, setReplyTo] = useState(null);
@@ -79,6 +81,9 @@ const MessageWindow = ({
 
     // Get username from local storage
     const username = localStorage.getItem('username');
+
+    const [alternateText, setAlternateText] = useState('Channel');
+    const [lastSeen, setLastSeen] = useState(null);
 
     const pinnedMessage = messages.find((message) => message.is_pinned);
 
@@ -209,6 +214,30 @@ const MessageWindow = ({
         }
     };
 
+    useEffect(() => {
+        if (!selectedChannel.is_direct_message) {
+          const interval = setInterval(() => {
+            setAlternateText(prev =>
+              prev === 'Channel'
+                ? `${teamMembers.filter(member => 
+                    selectedChannel.members.find(user => user.id === member.id) &&
+                    userPresences[member.id]?.status === 'online'
+                  ).length} online`
+                : 'Channel'
+            );
+          }, 3000);
+          return () => clearInterval(interval);
+        }
+      }, [selectedChannel, teamMembers, userPresences]);
+    
+      const getOnlineCount = () => {
+        return teamMembers.filter(
+          member =>
+            selectedChannel.members.find(user => user.id === member.id) &&
+            userPresences[member.id]?.status === 'online'
+        ).length;
+      };
+
     // Format message timestamp
     const formatTimestamp = (timestamp) => {
         return dayjs(timestamp).fromNow();
@@ -223,7 +252,7 @@ const MessageWindow = ({
                 flexDirection: 'column',
                 height: '100%',
                 bgcolor: 'background.paper',
-                borderRadius: 1,
+                borderRadius: 3,
                 overflow: 'hidden',
                 border: isMultiWindow ? '1px solid rgba(0, 0, 0, 0.12)' : 'none'
             }}
@@ -273,16 +302,50 @@ const MessageWindow = ({
                                     </Avatar>
                                 )}
 
-                                <Box>
-                                    <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600 }}>
-                                    {selectedChannel.is_direct_message
-                                        ? teamMembers.find(member => member.username !== username && selectedChannel.members.find(user => user.id === member.id))?.username || selectedChannel.name
+                                <Box sx={{ display: 'flex', lineHeight: 1, flexDirection: 'column' }}>
+                                    <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 600, bottom:0 }}>
+                                        {selectedChannel.is_direct_message
+                                        ? (() => {
+                                            const member = teamMembers.find(
+                                                member =>
+                                                member.username !== username &&
+                                                selectedChannel.members.find(user => user.id === member.id)
+                                            );
+                                            return member?.username || selectedChannel.name;
+                                            })()
                                         : selectedChannel.name}
+                                        {selectedChannel.is_direct_message && (
+                                        <PresenceIndicator
+                                            status={(() => {
+                                            const member = teamMembers.find(
+                                                member =>
+                                                member.username !== username &&
+                                                selectedChannel.members.find(user => user.id === member.id)
+                                            );
+                                            return userPresences[member?.id]?.status || 'offline';
+                                            })()}
+                                            timestamp={(() => {
+                                            const member = teamMembers.find(
+                                                member =>
+                                                member.username !== username &&
+                                                selectedChannel.members.find(user => user.id === member.id)
+                                            );
+                                            return userPresences[member?.id]?.timestamp;
+                                            })()}
+                                            setLastseen={setLastSeen}
+                                            size={8}
+                                        />
+                                        )}
                                     </Typography>
+
+                                    {/* <Typography variant="caption" color="text.secondary">
+                                        {lastSeen}
+                                    </Typography> */}
+
                                     <Typography variant="caption" color="text.secondary">
-                                        {selectedChannel.is_direct_message ? 'Direct Message' : 'Channel'}
+                                        {selectedChannel.is_direct_message ? lastSeen : alternateText}
                                     </Typography>
-                                </Box>
+                                    </Box>
                             </>
                         )}
                     </Box>
@@ -325,6 +388,7 @@ const MessageWindow = ({
                             position: 'sticky',
                             top: 0,
                             zIndex: 9,
+                            borderRadius: 2
                         }}
                     >
                         <Typography

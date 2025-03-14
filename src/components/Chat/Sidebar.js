@@ -43,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import PresenceIndicator from './PresenceIndicator';
 
 // Drawer width for desktop view
 const drawerWidth = 280;
@@ -59,6 +60,7 @@ const Sidebar = ({
   handleDrawerToggle,
   isMobile,
   teamId,
+  userPresences,
 }) => {
   const navigate = useNavigate();
   const currentUserId = localStorage.getItem('user_id');
@@ -117,6 +119,9 @@ const Sidebar = ({
   const getAvailableDMUsers = () => {
     // Get IDs of users already in DMs
     const currentDMUserIds = interactedUsers.map((user) => user.id);
+    console.log("interacted Users : ", interactedUsers)
+    console.log("current DM USer IDS : ", currentDMUserIds);
+    console.log("teamMembers : ", teamMembers);
 
     // Filter out current user and users already in DMs
     return teamMembers.filter(
@@ -232,11 +237,11 @@ const Sidebar = ({
           disablePadding
           sx={{
             mb: 1,
-            borderRadius: 1,
+            borderRadius: 3,
             '&:hover': { bgcolor: 'action.hover' },
           }}
         >
-          <ListItemButton onClick={() => setShowChannels(!showChannels)} sx={{ borderRadius: 1 }}>
+          <ListItemButton onClick={() => setShowChannels(!showChannels)} sx={{ borderRadius: 3 }}>
             <ListItemText primary="Channels" primaryTypographyProps={{ fontWeight: 600 }} />
             {showChannels ? <ExpandLess /> : <ExpandMore />}
           </ListItemButton>
@@ -345,7 +350,10 @@ const Sidebar = ({
                   <Avatar sx={{ width: 28, height: 28, mr: 1.5, bgcolor: 'primary.main' }}>
                     {member.username?.charAt(0).toUpperCase()}
                   </Avatar>
-                  <Typography variant="body2">{member.username}</Typography>
+                  <Typography variant="body2">
+                    {member.username}
+                    <PresenceIndicator status={userPresences[member.id]?.status || 'offline'} timestamp={userPresences[member.id]?.timestamp} size={10} />
+                  </Typography>
                 </MenuItem>
               ))
             ) : (

@@ -25,6 +25,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   const [error, setError] = useState(null);
   const reconnectTimeoutRef = useRef(null);
   const [selectedChannelsForForward, setSelectedChannelsForForward] = useState([]);
+  const [userPresences, setUserPresences] = useState({});
   
   // Connect to WebSocket
   useEffect(() => {
@@ -111,6 +112,11 @@ const ChatInterface = ({ setIsAuthenticated }) => {
       team_id: teamId
     });
     
+    sendWebSocketMessage({
+      message_type: 'get_user_presences',
+      team_id: teamId
+    });
+
     setLoading(false);
   };
   
@@ -158,7 +164,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         }
       });
     }
-  }, [activeChannels, fetchChannelMessages, messagesMap, selectedChannelsForForward]);
+  }, [activeChannels, fetchChannelMessages, messagesMap, selectedChannelsForForward, userPresences]);
   
   // Send message through WebSocket
   const sendWebSocketMessage = (message) => {
@@ -183,6 +189,27 @@ const ChatInterface = ({ setIsAuthenticated }) => {
           [data.channel_id]: data.messages
         }));
         break;
+      
+        case 'user_presence':
+          setUserPresences(prev => ({
+            ...prev,
+            [data.user_id]: {
+              status: data.status,
+              timestamp: data.timestamp
+            }
+          }));
+          break;
+        
+        case 'user_presences':
+          const presencesMap = {};
+          data.presences.forEach(presence => {
+            presencesMap[presence.user_id] = {
+              status: presence.status,
+              timestamp: presence.last_seen
+            };
+          });
+          setUserPresences(presencesMap);
+          break;
         
       case 'team_members':
         setTeamMembers(data.members);
@@ -206,6 +233,10 @@ const ChatInterface = ({ setIsAuthenticated }) => {
           return updatedMap;
         });
         break;
+
+      case 'channel_created':
+        // Add the new channel to the list
+        setChannels(prevChannels => [...prevChannels, data.channel]);
         
       case 'reaction_update':
         // Update reactions for all active channels
@@ -452,6 +483,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         handleDrawerToggle={handleDrawerToggle}
         isMobile={isMobile}
         teamId={teamId}
+        userPresences={userPresences}
       />
       
       <Box 
@@ -517,6 +549,7 @@ const ChatInterface = ({ setIsAuthenticated }) => {
                   selectedChannelsForForward={selectedChannelsForForward}
                   pinMessage={pinMessage}
                   unpinMessage={unpinMessage}
+                  userPresences={userPresences}
                 />
               </Grid>
             ))}

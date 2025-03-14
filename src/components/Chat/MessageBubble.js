@@ -118,7 +118,7 @@ const MessageBubble = ({
                 </Box>
             )}
             {showIfForwarded && (
-                <Paper elevation={1} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1, mb: 1, maxWidth: "75%" }}>
+                <Paper elevation={1} sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 3   , mb: 1, maxWidth: "75%" }}>
                     <Typography variant="caption" color="text.secondary">
                         <ForwardIcon fontSize="small" sx={{ mr: 0.5 }} />
                         Forwarded...
@@ -129,30 +129,32 @@ const MessageBubble = ({
             <Card
                 elevation={2}
                 sx={{
-                    backgroundColor: isOwnMessage ? 'blue.100' : 'grey.100',
+                    backgroundColor: isOwnMessage ? 'blue.100' : 'black.100',
                     color: isOwnMessage ? 'black.100' : 'white.100',
-                    borderRadius: 1,
-                    maxWidth: '75%',
+                    borderRadius: 3, // Increased for a more circular appearance
+                    maxWidth: '70%', // Slightly reduced size
                     wordBreak: 'break-word',
                 }}
             >
-                <CardContent sx={{ py: 1, px: 2, '&:last-child': { pb: 1 } }}>
+                <CardContent
+                    sx={{
+                        py: 0.75, // Reduced padding
+                        px: 1.5, // Reduced padding
+                        '&:last-child': { pb: 0.75 },
+                    }}
+                >
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                            <Box 
+                            <Box
                                 sx={{
                                     display: 'block',
                                     mr: 1,
-                                    flex: 1
+                                    flex: 1,
                                 }}
                             >
                                 {parseMessageContent(message.content)}
                             </Box>
-                            <Box sx={{ 
-                                display: 'flex', 
-                                alignItems: 'center',
-                                flexShrink: 0
-                            }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                                 <IconButton
                                     aria-label="message options"
                                     onClick={(event) => handleMessageOptionsClick(event, message)}
@@ -162,7 +164,11 @@ const MessageBubble = ({
                                 </IconButton>
                             </Box>
                         </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ textAlign: isOwnMessage ? 'right' : 'left' }}>
+                        <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ textAlign: isOwnMessage ? 'right' : 'left', fontSize: '0.75rem' }}
+                        >
                             {formatTimestamp(message.timestamp)}
                         </Typography>
                     </Box>

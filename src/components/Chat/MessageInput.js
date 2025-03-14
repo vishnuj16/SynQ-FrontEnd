@@ -24,6 +24,7 @@ import {
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 
+
 const TENOR_API_KEY = process.env.REACT_APP_TENOR_API_KEY; // Replace with your actual Tenor API key
 
 const MessageInput = ({
@@ -206,7 +207,7 @@ const MessageInput = ({
                         left: 16,
                         width: 'calc(100% - 32px)',
                         maxHeight: 350,
-                        borderRadius: 2,
+                        borderRadius: 3,
                         overflow: 'hidden',
                         mb: 1,
                         zIndex: 100
