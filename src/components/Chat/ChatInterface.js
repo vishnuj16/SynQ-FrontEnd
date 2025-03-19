@@ -199,6 +199,10 @@ const ChatInterface = ({ setIsAuthenticated }) => {
             }
           }));
           break;
+
+        case 'message_edited':
+          fetchChannelMessages(data.channel_id);
+          break;
         
         case 'user_presences':
           const presencesMap = {};
@@ -382,10 +386,18 @@ const ChatInterface = ({ setIsAuthenticated }) => {
   } 
 
   // Handle sending a message
-  const handleSendMessage = (channelId, content, replyToId = null) => {
+  const handleSendMessage = (channelId, content, replyToId = null, linkPreview = null, fileIds = null) => {
     console.log("Sending message : ", content, "Channel ID : ", channelId);
     const channel = channels.find(c => c.id === channelId);
     if (!channel) return;
+    
+    // Create message payload with link preview data
+    const messagePayload = {
+        content: content,
+        reply_to: replyToId,
+        link_preview: linkPreview,
+        fileIds: fileIds
+    };
     
     if (channel.is_direct_message) {
       // Get the other user's ID for direct messages
@@ -397,18 +409,16 @@ const ChatInterface = ({ setIsAuthenticated }) => {
         sendWebSocketMessage({
           message_type: 'direct_message',
           recipient_id: otherUserId,
-          content: content,
+          channel_id: channel.id,
           team_id: teamId,
-          reply_to: replyToId,
-          channel_id: channel.id
+          ...messagePayload
         });
       }
     } else {
       sendWebSocketMessage({
         message_type: 'channel_message',
         channel: channel.id,
-        content: content,
-        reply_to: replyToId
+        ...messagePayload
       });
     }
   };
@@ -424,6 +434,14 @@ const ChatInterface = ({ setIsAuthenticated }) => {
     sendWebSocketMessage({
       message_type: 'unpin_message',
       message_id: messageId
+    });
+  }
+
+  const editMessage = (messageId, content) => {
+    sendWebSocketMessage({
+      message_type: 'edit_message',
+      message_id: messageId,
+      content: content
     });
   }
   
@@ -529,13 +547,15 @@ const ChatInterface = ({ setIsAuthenticated }) => {
                   messages={messagesMap[channel.id] || []}
                   selectedChannel={channel}
                   teamMembers={teamMembers}
-                  onSendMessage={(content, replyToId) => 
-                    handleSendMessage(channel.id, content, replyToId)
+                  onSendMessage={(content, replyToId, linkPreview, fileIds) => 
+                    handleSendMessage(channel.id, content, replyToId, linkPreview, fileIds)
                   }
                   forwardMessage={handleForwardMessage}
                   onDeleteMessage={(messageId) => 
                     handleDeleteMessage(channel.id, messageId)
                   }
+                  onEditMessage={(messageId, content) =>
+                    editMessage(messageId, content)}
                   onReact={(messageId, reaction) => 
                     handleReaction(channel.id, messageId, reaction)
                   }

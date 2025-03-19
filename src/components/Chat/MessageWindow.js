@@ -17,7 +17,10 @@ import {
     ListItemIcon,
     ListItem,
     ListItemText,
-    Checkbox
+    Checkbox,
+    TextField,
+    Fade,
+    Backdrop
 } from '@mui/material';
 import {
     Delete as DeleteIcon,
@@ -30,7 +33,8 @@ import {
     Close as CloseIcon,
     ContentCopy as CopyIcon,
     Forward as ForwardIcon,
-    PushPin as PinIcon
+    PushPin as PinIcon,
+    Edit as EditIcon
 } from '@mui/icons-material';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -50,6 +54,7 @@ const MessageWindow = ({
     onSendMessage,
     forwardMessage,
     onDeleteMessage,
+    onEditMessage,
     onReact,
     handleDrawerToggle,
     loading,
@@ -71,13 +76,21 @@ const MessageWindow = ({
     const [emojiTargetMessage, setEmojiTargetMessage] = useState(null);
     const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
     
+    // Edit message states
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editMessageContent, setEditMessageContent] = useState('');
+    
     // Refs
     const messagesEndRef = useRef(null);
     const messageContainerRef = useRef(null);
+    const editInputRef = useRef(null);
 
     // Forwarding states
     const [forwardModalOpen, setForwardModalOpen] = useState(false);
     const [messageToForward, setMessageToForward] = useState(null);
+
+    // Edit Message
+    const [editMessageId, setEditMessageId] = useState(null);
 
     // Get username from local storage
     const username = localStorage.getItem('username');
@@ -119,6 +132,39 @@ const MessageWindow = ({
         if (selectedMessage) {
             onDeleteMessage(selectedMessage.id);
             handleContextMenuClose();
+        }
+    };
+
+    // Handle edit message
+    const handleEditClick = () => {
+        if (selectedMessage) {
+            setEditMessageContent(selectedMessage.content);
+            setEditMessageId(selectedMessage.id);
+            setEditModalOpen(true);
+            handleContextMenuClose();
+            
+            // Focus the input after modal opens
+            setTimeout(() => {
+                if (editInputRef.current) {
+                    editInputRef.current.focus();
+                }
+            }, 100);
+        }
+    };
+
+    // Handle edit modal close
+    const handleCloseEditModal = () => {
+        setEditModalOpen(false);
+        setEditMessageContent('');
+    };
+
+    // Submit edited message
+    const handleSubmitEdit = () => {
+        console.log("above : ", editMessageContent.trim())
+        if (editMessageContent.trim() !== '') {
+            console.log("gets here")
+            onEditMessage(editMessageId, editMessageContent.trim());
+            handleCloseEditModal();
         }
     };
 
@@ -338,10 +384,6 @@ const MessageWindow = ({
                                         )}
                                     </Typography>
 
-                                    {/* <Typography variant="caption" color="text.secondary">
-                                        {lastSeen}
-                                    </Typography> */}
-
                                     <Typography variant="caption" color="text.secondary">
                                         {selectedChannel.is_direct_message ? lastSeen : alternateText}
                                     </Typography>
@@ -484,35 +526,43 @@ const MessageWindow = ({
                     <ListItemIcon>
                         <EmojiIcon fontSize="small" />
                     </ListItemIcon>
-                    React with Emoji
+                    React
                 </MenuItem>
                 <MenuItem onClick={handleCopyMessage}>
                     <ListItemIcon>
                         <CopyIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Copy Message</ListItemText>
+                    <ListItemText>Copy</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={handleForwardClick}>
                     <ListItemIcon>
                         <ForwardIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Forward Message</ListItemText>
+                    <ListItemText>Forward</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={handlePinUnpinClick}>
                     <ListItemIcon>
                         <PinIcon fontSize="small" />
                     </ListItemIcon>
                     <ListItemText>
-                        {selectedMessage?.is_pinned ? "Unpin Message" : "Pin Message"}
+                        {selectedMessage?.is_pinned ? "Unpin" : "Pin"}
                     </ListItemText>
                 </MenuItem>
                 {selectedMessage?.sender === username && (
-                    <MenuItem onClick={handleDeleteMessage}>
-                        <ListItemIcon>
-                            <DeleteIcon fontSize="small" />
-                        </ListItemIcon>
-                        Delete
-                    </MenuItem>
+                    <>
+                        <MenuItem onClick={handleEditClick}>
+                            <ListItemIcon>
+                                <EditIcon fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText>Edit</ListItemText>
+                        </MenuItem>
+                        <MenuItem onClick={handleDeleteMessage}>
+                            <ListItemIcon>
+                                <DeleteIcon fontSize="small" />
+                            </ListItemIcon>
+                            Delete
+                        </MenuItem>
+                    </>
                 )}
             </Menu>
 
@@ -536,6 +586,107 @@ const MessageWindow = ({
                 }}>
                     <Picker data={data} onEmojiSelect={handleEmojiSelect} />
                 </Box>
+            </Modal>
+
+            {/* Edit Message Modal */}
+            <Modal
+                open={editModalOpen}
+                onClose={handleCloseEditModal}
+                closeAfterTransition
+                BackdropComponent={Backdrop}
+                BackdropProps={{
+                    timeout: 500,
+                }}
+                aria-labelledby="edit-message-modal"
+                aria-describedby="edit-your-message"
+            >
+                <Fade in={editModalOpen}>
+                    <Paper
+                        elevation={24}
+                        sx={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '90%',
+                            maxWidth: 500,
+                            bgcolor: 'background.paper',
+                            borderRadius: 2,
+                            boxShadow: theme => theme.shadows[24],
+                            p: 4,
+                            outline: 'none',
+                        }}
+                    >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Typography id="edit-message-modal" variant="h5" component="h2" fontWeight="bold">
+                                Edit Message
+                            </Typography>
+                            <IconButton onClick={handleCloseEditModal} size="small">
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Box>
+                        
+                        <TextField
+                            id="edit-message-content"
+                            inputRef={editInputRef}
+                            fullWidth
+                            multiline
+                            minRows={3}
+                            maxRows={8}
+                            variant="outlined"
+                            value={editMessageContent}
+                            onChange={(e) => setEditMessageContent(e.target.value)}
+                            placeholder="Edit your message..."
+                            autoFocus
+                            sx={{
+                                '& .MuiOutlinedInput-root': {
+                                    borderRadius: 2,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.01)',
+                                    '&:hover fieldset': {
+                                        borderColor: 'primary.main',
+                                    },
+                                    '&.Mui-focused fieldset': {
+                                        borderColor: 'primary.main',
+                                        borderWidth: '2px',
+                                    },
+                                },
+                                mb: 3
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSubmitEdit();
+                                }
+                            }}
+                        />
+                        
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                            <Button 
+                                variant="outlined" 
+                                onClick={handleCloseEditModal}
+                                sx={{ borderRadius: 6 }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                variant="contained" 
+                                color="primary" 
+                                onClick={handleSubmitEdit}
+                                disabled={!editMessageContent.trim()}
+                                sx={{ 
+                                    borderRadius: 6,
+                                    px: 3,
+                                    boxShadow: 2,
+                                    '&:hover': {
+                                        boxShadow: 4,
+                                    }
+                                }}
+                            >
+                                Save Changes
+                            </Button>
+                        </Box>
+                    </Paper>
+                </Fade>
             </Modal>
 
             {/* Forward Message Modal */}

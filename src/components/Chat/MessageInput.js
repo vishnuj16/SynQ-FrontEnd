@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Box,
     TextField,
@@ -12,18 +12,28 @@ import {
     Tab,
     Grid,
     InputBase,
-    CircularProgress
+    CircularProgress,
+    List,
+    ListItem,
+    ListItemText,
+    ListItemIcon,
+    Button
 } from '@mui/material';
 import {
     EmojiEmotions as EmojiIcon,
     Gif as GifIcon,
     Send as SendIcon,
     Close as CloseIcon,
-    Search as SearchIcon
+    Search as SearchIcon,
+    AttachFile as AttachFileIcon,
+    InsertDriveFile as FileIcon,
+    Download as DownloadIcon,
+    UploadFile as UploadIcon
 } from '@mui/icons-material';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-
+import { LinkPreview } from '@dhaiwat10/react-link-preview';
+import axios from 'axios';
 
 const TENOR_API_KEY = process.env.REACT_APP_TENOR_API_KEY; // Replace with your actual Tenor API key
 
@@ -43,9 +53,19 @@ const MessageInput = ({
     const [isLoadingGifs, setIsLoadingGifs] = useState(false);
     const [selectedGif, setSelectedGif] = useState(null);
 
+    // File attachment states
+    const [attachedFiles, setAttachedFiles] = useState([]);
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+    
     // Refs
     const messageInputRef = useRef(null);
+    const fileInputRef = useRef(null);
     const gifSearchTimeoutRef = useRef(null);
+
+    //Link Previews
+    const [links, setLinks] = useState([]);
+    const [linkPreview, setLinkPreview] = useState(null);
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
     // Focus input when reply is set
     useEffect(() => {
@@ -53,6 +73,42 @@ const MessageInput = ({
             messageInputRef.current.focus();
         }
     }, [replyTo]);
+
+    const detectLinks = useCallback((text) => {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.match(urlRegex) || [];
+    }, []);
+
+    useEffect(() => {
+        const detectedLinks = detectLinks(messageText);
+        setLinks(detectedLinks);
+        
+        // If links are found, fetch preview for the first one
+        if (detectedLinks.length > 0 && !linkPreview) {
+            fetchLinkPreview(detectedLinks[0]);
+        }
+        
+        // If message is cleared or links removed, clear preview
+        if (detectedLinks.length === 0 && linkPreview) {
+            setLinkPreview(null);
+        }
+    }, [messageText, detectLinks]);
+
+    const fetchLinkPreview = async (url) => {
+        try {
+            setIsLoadingPreview(true);
+            const response = await axios.post('http://localhost:8000/api/chat/fetch-link-preview/', { url }, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            setLinkPreview(response.data);
+        } catch (error) {
+            console.error('Error fetching link preview:', error);
+        } finally {
+            setIsLoadingPreview(false);
+        }
+    };
 
     // Handle tab change in media picker
     const handleMediaPickerTabChange = (event, newValue) => {
@@ -84,6 +140,54 @@ const MessageInput = ({
         if (messageInputRef.current) {
             messageInputRef.current.focus();
         }
+    };
+
+    // File attachment handling
+    const handleFileButtonClick = () => {
+        fileInputRef.current.click();
+    };
+
+    const handleFileChange = async (event) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        
+        setIsUploadingFile(true);
+        
+        try {
+            const filePromises = Array.from(files).map(async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await axios.post('http://localhost:8000/api/chat/upload-file/', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                return {
+                    id: response.data.id,
+                    filename: response.data.filename,
+                    url: response.data.url,
+                    size: response.data.size,
+                    content_type: response.data.content_type
+                };
+            });
+            
+            const uploadedFiles = await Promise.all(filePromises);
+            setAttachedFiles(prev => [...prev, ...uploadedFiles]);
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            alert('Failed to upload file. Please try again.');
+        } finally {
+            setIsUploadingFile(false);
+            // Clear the file input so the same file can be selected again
+            event.target.value = '';
+        }
+    };
+
+    const removeAttachedFile = (fileId) => {
+        setAttachedFiles(prev => prev.filter(file => file.id !== fileId));
     };
 
     // Fetch trending GIFs (mock implementation)
@@ -178,18 +282,26 @@ const MessageInput = ({
         setShowGifPicker(false);
     };
 
-    // Send message
+    // Send message with attachments
     const handleSendMessage = (e) => {
         e.preventDefault();
-        if (messageText.trim() || selectedGif) {
+        if (messageText.trim() || selectedGif || linkPreview || attachedFiles.length > 0) {
             const messageContent = selectedGif 
-                ? `${messageText.trim()} [GIF:${selectedGif.url}]` // Adding GIF URL to message content
+                ? `${messageText.trim()} [GIF:${selectedGif.url}]` 
                 : messageText;
+            
+            // Get file IDs for the message
+            const fileIds = attachedFiles.map(file => file.id);
                 
-            onSendMessage(messageContent, replyTo?.id);
+            // Include link preview data and file IDs
+            onSendMessage(messageContent, replyTo?.id, linkPreview, fileIds);
+            
+            // Reset everything
             setMessageText('');
             setReplyTo(null);
             setSelectedGif(null);
+            setLinkPreview(null);
+            setAttachedFiles([]);
             setShowEmojiPicker(false);
             setShowGifPicker(false);
         }
@@ -345,6 +457,98 @@ const MessageInput = ({
                     </Box>
                 </Box>
             )}
+
+            {/* File Attachments */}
+            {attachedFiles.length > 0 && (
+                <Box 
+                    sx={{ 
+                        p: 1, 
+                        borderTop: '1px solid rgba(0, 0, 0, 0.12)', 
+                        backgroundColor: 'background.paper',
+                        position: 'relative'
+                    }}
+                >
+                    <List dense>
+                        {attachedFiles.map((file) => (
+                            <ListItem
+                                key={file.id}
+                                secondaryAction={
+                                    <IconButton edge="end" aria-label="delete" onClick={() => removeAttachedFile(file.id)}>
+                                        <CloseIcon />
+                                    </IconButton>
+                                }
+                                sx={{
+                                    borderRadius: 1,
+                                    mb: 0.5,
+                                    backgroundColor: 'action.hover'
+                                }}
+                            >
+                                <ListItemIcon>
+                                    <FileIcon />
+                                </ListItemIcon>
+                                <ListItemText 
+                                    primary={file.filename} 
+                                    secondary={`${(file.size / 1024).toFixed(2)} KB`} 
+                                />
+                            </ListItem>
+                        ))}
+                    </List>
+                </Box>
+            )}
+
+            {/* Link Preview */}
+            {linkPreview && (
+                <Box 
+                    sx={{ 
+                        p: 1, 
+                        borderTop: '1px solid rgba(0, 0, 0, 0.12)', 
+                        backgroundColor: 'background.paper',
+                        position: 'relative'
+                    }}
+                >
+                    <Box 
+                        sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            p: 1,
+                            borderRadius: 1,
+                            backgroundColor: 'action.hover'
+                        }}
+                    >
+                        {linkPreview.image && (
+                            <Box 
+                                component="img" 
+                                src={linkPreview.image} 
+                                alt="Link preview"
+                                sx={{
+                                    height: 60,
+                                    width: 60,
+                                    objectFit: 'cover',
+                                    borderRadius: 1,
+                                    mr: 1
+                                }}
+                            />
+                        )}
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                                {linkPreview.title || 'Untitled'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                                {linkPreview.description?.substring(0, 100) || 'No description'}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {new URL(linkPreview.url).hostname}
+                            </Typography>
+                        </Box>
+                        <IconButton 
+                            size="small" 
+                            onClick={() => setLinkPreview(null)}
+                        >
+                            <CloseIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+                </Box>
+            )}
             
             {/* Message form */}
             <Paper
@@ -368,6 +572,15 @@ const MessageInput = ({
                         </Typography>
                     </Paper>
                 )}
+                
+                {/* Hidden file input */}
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                    multiple
+                />
                 
                 <TextField
                     fullWidth
@@ -396,6 +609,19 @@ const MessageInput = ({
                                         onClick={toggleGifPicker}
                                     >
                                         <GifIcon />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Attach file">
+                                    <IconButton 
+                                        aria-label="attach file" 
+                                        onClick={handleFileButtonClick}
+                                        disabled={isUploadingFile}
+                                    >
+                                        {isUploadingFile ? (
+                                            <CircularProgress size={24} />
+                                        ) : (
+                                            <AttachFileIcon />
+                                        )}
                                     </IconButton>
                                 </Tooltip>
                             </InputAdornment>
