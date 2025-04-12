@@ -170,6 +170,7 @@ function Login({ setIsAuthenticated }) {
       if (response.ok) {
         localStorage.setItem('token', data.access);
         localStorage.setItem('username', data.username);
+        console.log("User ID : ", data.user_id)
         localStorage.setItem('user_id', data.user_id);
         setIsAuthenticated(true);
         navigate('/teams');

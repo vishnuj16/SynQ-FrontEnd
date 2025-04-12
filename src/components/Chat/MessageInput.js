@@ -17,7 +17,10 @@ import {
     ListItem,
     ListItemText,
     ListItemIcon,
-    Button
+    Button,
+    MenuItem,
+    Avatar,
+    Menu
 } from '@mui/material';
 import {
     EmojiEmotions as EmojiIcon,
@@ -41,7 +44,9 @@ const MessageInput = ({
     onSendMessage,
     replyTo,
     handleCancelReply,
-    setReplyTo
+    setReplyTo,
+    teamMembers, 
+    channelMembers
 }) => {
     // State variables
     const [messageText, setMessageText] = useState("");
@@ -52,6 +57,12 @@ const MessageInput = ({
     const [gifs, setGifs] = useState([]);
     const [isLoadingGifs, setIsLoadingGifs] = useState(false);
     const [selectedGif, setSelectedGif] = useState(null);
+
+    //Mentions
+    const [mentionAnchorEl, setMentionAnchorEl] = useState(null);
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [mentionStart, setMentionStart] = useState(null);
+    const [filteredMentions, setFilteredMentions] = useState([]);
 
     // File attachment states
     const [attachedFiles, setAttachedFiles] = useState([]);
@@ -73,6 +84,76 @@ const MessageInput = ({
             messageInputRef.current.focus();
         }
     }, [replyTo]);
+
+    useEffect(() => {
+        if (messageText && messageText.endsWith('@')) {
+            handleMentionTrigger();
+        }
+    }, [messageText])
+
+    const handleMentionTrigger = () => {
+        if (!messageInputRef.current) return;
+        
+        setMentionStart(messageText.length);
+        setMentionQuery('');
+        setMentionAnchorEl(messageInputRef.current);
+        
+        // Initialize with all available members
+        const allMembers = [
+            { id: 'everyone', username: 'everyone', displayName: 'Everyone' },
+            ...(channelMembers || teamMembers || [])
+        ];
+        
+        setFilteredMentions(allMembers);
+    };
+    
+    const handleMentionSelect = (member) => {
+        if (!member) return;
+        
+        // Insert the mention into the text
+        const beforeMention = messageText.substring(0, mentionStart);
+        const mention = `@${member.username} `;
+        
+        setMessageText(beforeMention + mention);
+        setMentionAnchorEl(null);
+        
+        // Focus the input after selecting a mention
+        if (messageInputRef.current) {
+            messageInputRef.current.focus();
+        }
+    };
+    
+    const handleMessageInputKeyDown = (e) => {
+        // Check for @ symbol to trigger mentions
+        if (e.key === '@') {
+            handleMentionTrigger();
+        }
+        
+        // Close mention dropdown when Escape is pressed
+        if (e.key === 'Escape' && mentionAnchorEl) {
+            setMentionAnchorEl(null);
+        }
+    };
+    
+    const handleMentionQueryChange = (e) => {
+        const query = e.target.value.substring(mentionStart);
+        setMentionQuery(query);
+        
+        // Filter members based on the query
+        const allMembers = [
+            { id: 'everyone', username: 'everyone', displayName: 'Everyone' },
+            ...(channelMembers || teamMembers || [])
+        ];
+        
+        const filtered = query
+            ? allMembers.filter(member => 
+                member.username.toLowerCase().includes(query.toLowerCase()) ||
+                (member.displayName && member.displayName.toLowerCase().includes(query.toLowerCase()))
+            )
+            : allMembers;
+            
+        setFilteredMentions(filtered);
+    };
 
     const detectLinks = useCallback((text) => {
         const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -193,6 +274,7 @@ const MessageInput = ({
     // Fetch trending GIFs (mock implementation)
     const fetchTrendingGifs = async () => {
         try {
+            console.log("API KEY : ", TENOR_API_KEY)
             setIsLoadingGifs(true);
             // Using v2 API endpoint
             const response = await fetch(
@@ -588,7 +670,13 @@ const MessageInput = ({
                     variant="outlined"
                     size="small"
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={(e) => {
+                        setMessageText(e.target.value)
+                        if (mentionAnchorEl) {
+                            handleMentionQueryChange(e);
+                        }
+                    }}
+                    onKeyDown={handleMessageInputKeyDown}
                     inputRef={messageInputRef}
                     InputProps={{
                         startAdornment: (
@@ -636,6 +724,39 @@ const MessageInput = ({
                     }}
                     sx={{ borderRadius: 2 }}
                 />
+
+                <Menu
+                    anchorEl={mentionAnchorEl}
+                    open={Boolean(mentionAnchorEl)}
+                    onClose={() => setMentionAnchorEl(null)}
+                    sx ={{
+                        maxHeight: 300,
+                        width: 250
+                    }}
+                >
+                    {filteredMentions.map((member) => (
+                        <MenuItem
+                            key={member.id || member.username}
+                            onClick={() => handleMentionSelect(member)}
+                        >
+                            <ListItemIcon>
+                                <Avatar sx={{ width: 24, height: 24}}>
+                                    {member.username.substring(0, 1).toUpperCase()}
+                                </Avatar>
+                            </ListItemIcon>
+                            <ListItemText>
+                                {member.username}
+                                {member.username === 'everyone' && '(notify all)'}
+                            </ListItemText>
+                        </MenuItem>
+                    ))}
+                    {filteredMentions.length === 0 && (
+                        <MenuItem disabled>
+                            <ListItemText>No Matches found</ListItemText>
+                        </MenuItem>
+                    )}
+
+                </Menu>
             </Paper>
         </Box>
     );

@@ -79,6 +79,12 @@ const MessageWindow = ({
     // Edit message states
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editMessageContent, setEditMessageContent] = useState('');
+
+    //Search Functionality
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+    const [searchBarOpen, setSearchBarOpen] = useState(false);
     
     // Refs
     const messagesEndRef = useRef(null);
@@ -113,6 +119,83 @@ const MessageWindow = ({
             const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
             setShouldAutoScroll(isNearBottom);
         }
+    };
+
+    const searchMessages = (query) => {
+        console.log("Search messages: ", query);
+        
+        if (!query.trim()) {
+            setSearchResults([]);
+            setCurrentSearchIndex(0);
+            return;
+        }
+        
+        const results = messages.filter(message => 
+            message.content.toLowerCase().includes(query.toLowerCase())
+        );
+        
+        setSearchResults(results);
+        setCurrentSearchIndex(0);
+        
+        // Scroll to first result if available, with a slight delay to ensure state is updated
+        if (results.length > 0) {
+            // Use setTimeout to ensure the state update has completed
+            setTimeout(() => {
+                scrollToMessage(results[0].id);
+            }, 100);
+        }
+    };
+
+    const scrollToMessage = (messageId) => {
+        // Allow a brief moment for the DOM to update
+        setTimeout(() => {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                // Scroll to the message with smooth behavior
+                messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Find the message card within the message bubble
+                const messageCard = messageElement.querySelector('.MuiCard-root') || messageElement;
+                
+                // Store the original styles
+                const originalBoxShadow = messageCard.style.boxShadow;
+                
+                // Apply highlight
+                messageCard.style.boxShadow = '0 0 0 2px #FFC107';
+                messageCard.style.transition = 'box-shadow 0.3s ease';
+                
+                // Remove highlight after delay
+                setTimeout(() => {
+                    messageCard.style.boxShadow = originalBoxShadow;
+                }, 2000);
+            } else {
+                console.warn(`Message element with ID message-${messageId} not found`);
+            }
+        }, 100);
+    };
+
+    const goToNextSearchResult = () => {
+        if (searchResults.length === 0) return;
+        
+        const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+        setCurrentSearchIndex(nextIndex);
+        
+        // Slight delay to ensure state update completes
+        setTimeout(() => {
+            scrollToMessage(searchResults[nextIndex].id);
+        }, 50);
+    };
+    
+    const goToPreviousSearchResult = () => {
+        if (searchResults.length === 0) return;
+        
+        const prevIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+        setCurrentSearchIndex(prevIndex);
+        
+        // Slight delay to ensure state update completes
+        setTimeout(() => {
+            scrollToMessage(searchResults[prevIndex].id);
+        }, 50);
     };
     
     // Handle message context menu
@@ -392,6 +475,16 @@ const MessageWindow = ({
                         )}
                     </Box>
 
+                    <IconButton 
+                        color="primary"
+                        onClick={() => setSearchBarOpen(prev => !prev)}
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M21 21L16.65 16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </IconButton>
+
                     {/* Close button for multi-window mode */}
                     {isMultiWindow && onClose && (
                         <IconButton 
@@ -405,6 +498,68 @@ const MessageWindow = ({
                     )}
                 </Toolbar>
             </AppBar>
+
+            {/* Search Bar */}
+            {searchBarOpen && (
+                <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    p: 1, 
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
+                    backgroundColor: 'background.paper'
+                }}>
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            searchMessages(e.target.value);
+                        }}
+                        placeholder="Search messages..."
+                        style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            marginRight: '8px'
+                        }}
+                        autoFocus
+                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ mx: 1 }}>
+                        {searchResults.length > 0 ? 
+                            `${currentSearchIndex + 1}/${searchResults.length}` : 
+                            'No results'}
+                    </Typography>
+                    <IconButton 
+                        size="small" 
+                        onClick={goToPreviousSearchResult}
+                        disabled={searchResults.length === 0}
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </IconButton>
+                    <IconButton 
+                        size="small" 
+                        onClick={goToNextSearchResult}
+                        disabled={searchResults.length === 0}
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 6L15 12L9 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </IconButton>
+                    <IconButton 
+                        size="small" 
+                        onClick={() => {
+                            setSearchBarOpen(false);
+                            setSearchQuery('');
+                            setSearchResults([]);
+                        }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                </Box>
+            )}
 
             {/* Message container */}
             <Box
@@ -504,6 +659,8 @@ const MessageWindow = ({
                 onSendMessage={onSendMessage}
                 handleCancelReply={handleCancelReply}
                 setReplyTo={setReplyTo}
+                teamMembers={teamMembers}
+                channelMembers={selectedChannel?.members}
             />
 
             {/* Context Menu */}

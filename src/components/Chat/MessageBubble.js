@@ -39,6 +39,8 @@ const MessageBubble = ({
     handleMessageOptionsClick,
     onReact
 }) => {
+
+    const currentUsername = localStorage.getItem('username');
     // Parse message content for GIFs
     const parseMessageContent = (content, hasLinkPreview) => {
         const gifRegex = /\[GIF:(.*?)\]/;
@@ -52,7 +54,7 @@ const MessageBubble = ({
             
             return (
                 <>
-                    {textContent && <Typography variant="body2" color="text.primary">{textContent}</Typography>}
+                    {textContent && <Typography variant="body2" color="text.primary" sx={{ mb: 1 }}>{formatMessageWithMentions(textContent)}</Typography>}
                     <Box sx={{ maxWidth: '100%', borderRadius: 2, overflow: 'hidden', mt: textContent ? 1 : 0 }}>
                         <img src={gifUrl} alt="GIF" style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
                     </Box>
@@ -65,9 +67,79 @@ const MessageBubble = ({
             content = content.replace(urlRegex, '').trim();
         }
     
-        return <Typography variant="body2" color="text.primary">{content}</Typography>;
+        return formatMessageWithMentions(content)
     };
     
+    const formatMessageWithMentions = (content) => {
+        // Regular expression to identify mentions
+        const mentionRegex = /@(\w+)\b/g;
+        
+        // Split message into parts (text and mentions)
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = mentionRegex.exec(content)) !== null) {
+            // Add text before mention
+            if (match.index > lastIndex) {
+                parts.push({
+                    type: 'text',
+                    content: content.substring(lastIndex, match.index)
+                });
+            }
+            
+            // Add the mention, checking if it's the current user
+            const isCurrentUser = match[1] === currentUsername;
+            
+            parts.push({
+                type: 'mention',
+                username: match[1],
+                isCurrentUser
+            });
+            
+            lastIndex = match.index + match[0].length;
+        }
+
+        console.log("Parts : ", parts)
+        
+        // Add remaining text
+        if (lastIndex < content.length) {
+            parts.push({
+                type: 'text',
+                content: content.substring(lastIndex)
+            });
+        }
+        
+        // Return the formatted JSX
+        return parts.map((part, index) => {
+            if (part.type === 'mention') {
+                return (
+                    <Chip
+                        key={index}
+                        label={`@${part.username}`}
+                        size="small"
+                        color={part.username === 'everyone' ? 'secondary' : 'primary'}
+                        variant={part.isCurrentUser ? "default" : "outlined"}
+                        sx={{ 
+                            height: 22, 
+                            fontSize: '0.85rem',
+                            fontWeight: 500,
+                            animation: part.isCurrentUser ? 'pulse 2s infinite' : 'none',
+                            '& .MuiChip-label': { padding: '0px 6px' },
+                            '@keyframes pulse': {
+                                '0%': { boxShadow: '0 0 0 0 rgba(25, 118, 210, 0.4)' },
+                                '70%': { boxShadow: '0 0 0 10px rgba(25, 118, 210, 0)' },
+                                '100%': { boxShadow: '0 0 0 0 rgba(25, 118, 210, 0)' }
+                            }
+                        }}
+                    />
+                );
+            } else {
+                return <span key={index}>{part.content}</span>;
+            }
+        });
+    };
+
     // Get file icon based on file type
     const getFileIcon = (filename) => {
         const extension = filename.split('.').pop().toLowerCase();
@@ -314,6 +386,7 @@ const MessageBubble = ({
 
     return (
         <Box
+            id={`message-${message.id}`}
             sx={{
                 mb: 1.5,
                 display: 'flex',
